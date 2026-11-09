@@ -1,0 +1,91 @@
+<div id="hc-ridge-cursor" class="hc-ridge-explainer">
+  <div class="viz-row hc-ridge-heading">
+    <span>整日山脈與時間游標</span>
+    <span class="text-small text-muted">概念地形，非實際健康資料</span>
+  </div>
+  <svg class="hc-ridge-drawing" role="img" aria-label="完整山脈保持可見，小圓點隨下方時間軸移動，表示播放時刻而非人的地理位置。"></svg>
+  <label class="form-label" for="hc-ridge-time">播放時間 <output class="tabular-nums" id="hc-ridge-readout" for="hc-ridge-time">09:00</output></label>
+  <input id="hc-ridge-time" class="form-range" type="range" min="0" max="1440" step="5" value="540" aria-label="播放時間，單位為午夜後的分鐘數">
+</div>
+<style>
+  #hc-ridge-cursor { display: grid; gap: calc(var(--font-size-base) * .5); }
+  #hc-ridge-cursor .hc-ridge-heading { justify-content: space-between; padding-right: 0; }
+  #hc-ridge-cursor .hc-ridge-drawing { display: block; width: 100%; height: 224px; overflow: visible; }
+  #hc-ridge-cursor .hc-ridge-drawing text { fill: var(--muted-foreground); font-family: inherit; font-size: var(--font-size-base); }
+  #hc-ridge-cursor .hc-ridge-drawing .hc-time-label { fill: var(--foreground); }
+  #hc-ridge-cursor .hc-ridge-drawing path { stroke-linejoin: round; }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('hc-ridge-cursor');
+  const svg = root.querySelector('.hc-ridge-drawing');
+  const slider = root.querySelector('#hc-ridge-time');
+  const output = root.querySelector('#hc-ridge-readout');
+  const ns = 'http://www.w3.org/2000/svg';
+  const peaks = [32, 38, 27, 34, 24, 29, 39, 58, 43, 71, 54, 45, 67, 57, 73, 59, 49, 76, 58, 99, 140, 101, 56, 38, 32];
+  const saved = window.openai?.widgetState;
+  let current = Number(saved?.privateContent?.minute ?? 540);
+  if (!Number.isFinite(current)) current = 540;
+  current = Math.max(0, Math.min(1440, current));
+  let width = 640;
+  function node(tag, attributes, text) {
+    const element = document.createElementNS(ns, tag);
+    for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value);
+    if (text !== undefined) element.textContent = text;
+    svg.appendChild(element);
+    return element;
+  }
+  function coordinates(hour) {
+    const index = Math.min(23, Math.floor(hour));
+    const fraction = Math.min(1, hour - index);
+    const height = peaks[index] * (1 - fraction) + peaks[index + 1] * fraction;
+    return [24 + hour / 24 * (width - 48), 183 - height];
+  }
+  function render() {
+    width = Math.max(280, root.getBoundingClientRect().width || 640);
+    svg.setAttribute('viewBox', `0 0 ${width} 224`);
+    svg.replaceChildren();
+    const ridge = peaks.map((height, hour) => coordinates(hour));
+    const front = ridge.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join(' ');
+    node('path', { d: `${front} L${width - 24},190 L24,190 Z`, fill: 'color-mix(in srgb, var(--foreground) 7%, var(--background))' });
+    for (let hour = 2; hour < 24; hour += 3) {
+      const [x, y] = coordinates(hour);
+      const [nextX, nextY] = coordinates(hour + 1);
+      node('path', { d: `M${x},${y} L${Math.min(width - 24, x + 40)},190 L${nextX},${nextY} Z`, fill: 'color-mix(in srgb, var(--foreground) 4%, var(--background))' });
+    }
+    node('path', { d: front, fill: 'none', stroke: 'color-mix(in srgb, var(--foreground) 45%, var(--background))', 'stroke-width': '1.2' });
+    const ticks = width < 480 ? [0, 12, 24] : [0, 6, 12, 18, 24];
+    for (const hour of ticks) {
+      const [x] = coordinates(hour);
+      node('text', { x, y: 216, 'text-anchor': hour === 0 ? 'start' : hour === 24 ? 'end' : 'middle' }, `${String(hour).padStart(2, '0')}:00`);
+    }
+    const time = `${String(Math.floor(current / 60)).padStart(2, '0')}:${String(current % 60).padStart(2, '0')}`;
+    const [x, y] = coordinates(current / 60);
+    node('circle', { cx: x, cy: y, r: 12, fill: 'var(--viz-series-1)', opacity: '.16' });
+    node('circle', { cx: x, cy: y, r: 4.5, fill: 'var(--viz-series-1)' });
+    node('text', { x: Math.max(28, Math.min(width - 28, x)), y: y - 21, 'text-anchor': x < 58 ? 'start' : x > width - 58 ? 'end' : 'middle', class: 'hc-time-label' }, time);
+    output.value = time;
+    output.textContent = time;
+    slider.value = String(current);
+    slider.setAttribute('aria-valuetext', time);
+  }
+  slider.addEventListener('input', () => {
+    current = Number(slider.value);
+    render();
+  });
+  slider.addEventListener('change', () => {
+    if (window.openai?.setWidgetState) {
+      window.openai.setWidgetState({ modelContent: null, privateContent: { minute: current } }).catch(() => {});
+    }
+  });
+  window.addEventListener('openai:set_globals', event => {
+    const value = Number(event.detail?.globals?.widgetState?.privateContent?.minute);
+    if (Number.isFinite(value)) {
+      current = Math.max(0, Math.min(1440, value));
+      render();
+    }
+  });
+  new ResizeObserver(render).observe(root);
+  render();
+})();
+</script>

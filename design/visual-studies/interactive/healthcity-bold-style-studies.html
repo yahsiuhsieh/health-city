@@ -1,0 +1,184 @@
+<div id="hc-bold">
+  <div class="hb-controls" aria-label="Style preview controls">
+    <button type="button" data-time="day" aria-pressed="true">Day</button>
+    <button type="button" data-time="night" aria-pressed="false">Night</button>
+    <button type="button" data-motion aria-pressed="false">Play motion</button>
+    <span>Art exploration · synthetic heart-rate profile</span>
+  </div>
+  <div class="viz-carousel" aria-label="HealthCity bold art directions">
+    <section data-variant="Porcelain bay" aria-label="Porcelain bay">
+      <div class="hb-view" data-style="porcelain" role="img" aria-label="A luminous porcelain harbor, with modern white villas, ochre pergolas, turquoise water, soft layered trees, and a continuous smooth ridge carrying a small train."></div>
+      <div class="hb-caption"><strong>Porcelain bay</strong><span>Sculpted terraces · modern villas · luminous turquoise</span></div>
+    </section>
+    <section data-variant="Living atlas" aria-label="Living atlas" hidden>
+      <div class="hb-view" data-style="atlas" role="img" aria-label="An illustrated three-dimensional landscape with flowing contour lines, coral and blue pavilions, graphic water ribbons, rounded trees, and a continuous heart-rate ridge."></div>
+      <div class="hb-caption"><strong>Living atlas</strong><span>Flowing contours · folded roofs · graphic water</span></div>
+    </section>
+    <section data-variant="Emerald sanctuary" aria-label="Emerald sanctuary" hidden>
+      <div class="hb-view" data-style="forest" role="img" aria-label="A dense forest harbor with wooden cabins and bridges, jade water, mossy rolling hills, rounded layered trees, and a small ridge train. Night mode illuminates the harbor windows."></div>
+      <div class="hb-caption"><strong>Emerald sanctuary</strong><span>Forest canopy · timber boardwalks · jade lagoon</span></div>
+    </section>
+  </div>
+  <div class="hb-footer" aria-live="polite">Drag to orbit · scroll to zoom · right-drag to pan</div>
+</div>
+<style>
+#hc-bold{font:14px/1.5 system-ui,sans-serif;color:light-dark(#263f43,#e4efed);color-scheme:light dark}
+#hc-bold .hb-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding-right:80px;margin-bottom:12px}
+#hc-bold button{font:inherit;color:inherit;background:light-dark(#edf1ee,#293f43);border:1px solid light-dark(#c5d4d1,#526b6e);padding:6px 12px;border-radius:6px}
+#hc-bold button[aria-pressed="true"]{background:light-dark(#2e5857,#b4d5cc);color:light-dark(#fff,#203a36)}
+#hc-bold .hb-controls span,#hc-bold .hb-caption span,#hc-bold .hb-footer{font-size:12px;opacity:.82}
+#hc-bold .hb-view{height:520px;width:100%;overflow:hidden;border-radius:10px;background:#b9d9d7;touch-action:none}
+#hc-bold .hb-view canvas{display:block;width:100%;height:100%}
+#hc-bold .hb-caption{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:10px}
+#hc-bold strong{font-weight:500}
+#hc-bold .hb-footer{margin-top:8px}
+@media(max-width:480px){#hc-bold .hb-view{height:380px}#hc-bold .hb-caption{display:block}#hc-bold .hb-caption span{display:block}}
+@media(pointer:coarse){#hc-bold button{min-height:44px}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {SSAOPass} from 'three/addons/postprocessing/SSAOPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+const root=document.getElementById('hc-bold');
+const shared={night:window.openai?.widgetState?.modelContent?.night===true,motion:false};
+const knobs={ao:true,exposure:1.12};
+const reduced=matchMedia('(prefers-reduced-motion: reduce)');
+const instances=[];
+const art={
+ porcelain:{sky:0xc9e4e3,sea:0x64c5c9,deep:0x2a929f,land:0xf0e6d3,edge:0xded5bc,hill:0x9abbb0,high:0xdbe0c8,tree:0x6eaa94,tree2:0xa2c8a2,wall:0xfff5e5,accent:0xd99c48,road:0xdbbfb0,wood:0xb68c63,glass:0x497e83,roughness:.48},
+ atlas:{sky:0xe8d9d0,sea:0xa6d2cf,deep:0x73aaa9,land:0xe9cfa9,edge:0xc69479,hill:0x91bda7,high:0xd6d6ad,tree:0x5c9b8c,tree2:0xb3c4a0,wall:0xf4e4ce,accent:0xd8826d,road:0xd19b79,wood:0x9d7867,glass:0x477b88,roughness:.94},
+ forest:{sky:0x9dbfbd,sea:0x367f7d,deep:0x25575c,land:0x7b9970,edge:0x566f62,hill:0x4d7967,high:0x8ba07d,tree:0x326c58,tree2:0x76a780,wall:0xbea37b,accent:0xc88351,road:0xaaa285,wood:0x84674c,glass:0x547c79,roughness:.83}
+};
+// Synthetic sampled profile. Shape-preserving Hermite interpolation avoids overshoot.
+const profile=[1.15,1.28,1.1,1.55,2.04,1.69,2.2,3.02,2.78,2.16,2.43,1.81,1.42];
+function interpolate(values,t){
+ const n=values.length-1,u=THREE.MathUtils.clamp(t,0,1)*n,i=Math.min(Math.floor(u),n-1),v=u-i;
+ const d=j=>values[j+1]-values[j];
+ const m=j=>{if(j===0)return d(0);if(j===n)return d(n-1);const a=d(j-1),b=d(j);return a*b<=0?0:2*a*b/(a+b)};
+ return (2*v*v*v-3*v*v+1)*values[i]+(v*v*v-2*v*v+v)*m(i)+(-2*v*v*v+3*v*v)*values[i+1]+(v*v*v-v*v)*m(i+1);
+}
+function ridge(x){return .92+interpolate(profile,(x+7)/14)}
+function ridgeZ(x){return -3.1+.35*Math.sin(x*.53)}
+function surface(x,z){const end=THREE.MathUtils.smoothstep(x,-7.7,-6.9)*(1-THREE.MathUtils.smoothstep(x,6.9,7.7));return .79+(ridge(x)-.79)*Math.exp(-Math.pow((z-ridgeZ(x))/1.37,2))*end}
+function islandShape(scale=1){
+ const s=new THREE.Shape();s.moveTo(-8.3,-1.5);s.bezierCurveTo(-8.9,-5.4,-4.8,-6.6,-1,-6.3);s.bezierCurveTo(3.5,-6.9,8,-5.1,8.2,-1.2);s.bezierCurveTo(9.1,1.9,6.1,5.3,3.6,5.4);s.bezierCurveTo(2,5.4,2.9,3.35,.7,3.0);s.bezierCurveTo(-1.1,2.7,-1.1,5.0,-3.1,5.2);s.bezierCurveTo(-6.8,5.9,-8.6,2.6,-8.3,-1.5);
+ if(scale!==1){const points=s.getPoints(120);const scaled=new THREE.Shape();scaled.setFromPoints(points.map(p=>p.multiplyScalar(scale)));return scaled}return s;
+}
+function build(view){
+ const id=view.dataset.style,p=art[id],porcelain=id==='porcelain',atlas=id==='atlas',forest=id==='forest';
+ const scene=new THREE.Scene();scene.background=new THREE.Color(p.sky);
+ const camera=new THREE.PerspectiveCamera(33,1,.1,100);camera.position.set(16,17.5,24.5);
+ const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,1.4));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.12;view.appendChild(renderer.domElement);
+ const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,1.1,0);controls.minDistance=15;controls.maxDistance=46;controls.maxPolarAngle=1.28;controls.minPolarAngle=.28;controls.enableDamping=true;controls.update();
+ const fill=new THREE.HemisphereLight(0xe0f2ef,0x8a9079,2.2);scene.add(fill);
+ const sun=new THREE.DirectionalLight(0xffe6bd,3.25);sun.position.set(-9,17,8);sun.castShadow=true;sun.shadow.mapSize.set(1536,1536);Object.assign(sun.shadow.camera,{left:-13,right:13,top:13,bottom:-13,near:.1,far:55});sun.shadow.normalBias=.035;sun.shadow.bias=-.00015;scene.add(sun);
+ const cache=new Map(),glow=[],actors=[],ripples=[];
+ function mat(c,more={}){const key=c+JSON.stringify(more);if(!cache.has(key))cache.set(key,new THREE.MeshStandardMaterial({color:c,roughness:p.roughness,...more}));return cache.get(key)}
+ function mesh(g,c,x=0,y=0,z=0,parent=scene,more={}){const m=new THREE.Mesh(g,mat(c,more));m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
+ function box(w,h,d,c,x,y,z,parent=scene,r=.08){return mesh(new RoundedBoxGeometry(w,h,d,2,Math.min(r,w/3,h/3,d/3)),c,x,y,z,parent)}
+ function orb(rx,ry,rz,c,x,y,z,parent=scene){const o=mesh(new THREE.SphereGeometry(1,20,12),c,x,y,z,parent);o.scale.set(rx,ry,rz);return o}
+ function cylinder(r1,r2,h,c,x,y,z,parent=scene,n=20){return mesh(new THREE.CylinderGeometry(r1,r2,h,n),c,x,y,z,parent)}
+ function tube(points,c,r=.025,parent=scene){const curve=points instanceof THREE.Curve?points:new THREE.CatmullRomCurve3(points.map(a=>new THREE.Vector3(...a)));return mesh(new THREE.TubeGeometry(curve,Math.max(30,points.length||100),r,5,false),c,0,0,0,parent)}
+ function line(points,c,opacity=1){const m=new THREE.Line(new THREE.BufferGeometry().setFromPoints(points.map(a=>new THREE.Vector3(...a))),new THREE.LineBasicMaterial({color:c,transparent:opacity<1,opacity}));scene.add(m);return m}
+ function slab(shape,y,h,c,bevel=.1){const g=new THREE.ExtrudeGeometry(shape,{depth:h,bevelEnabled:bevel>0,bevelSegments:3,bevelSize:bevel,bevelThickness:bevel,steps:1,curveSegments:32});g.rotateX(Math.PI/2);return mesh(g,c,0,y,0)}
+ // Three distinct water treatments and framing choices.
+ const waterG=new THREE.CircleGeometry(porcelain?13.3:atlas?12.8:32,porcelain?96:128);waterG.rotateX(-Math.PI/2);
+ const water=mesh(waterG,p.sea,0,-.03,0,scene,{roughness:atlas?.88:porcelain?.25:.32,metalness:porcelain?.08:.04});water.castShadow=false;
+ if(!forest){cylinder(porcelain?13.3:12.8,porcelain?13.3:12.8,.45,p.deep,0,-.32,0,scene,96)}
+ const lower=slab(islandShape(1.015),.48,.6,p.edge,.14);slab(islandShape(),.73,.28,p.land,.12);
+ // Smooth continuous height field; no cone peaks or decorative snow caps.
+ const g=new THREE.PlaneGeometry(15.4,6.2,180,72);g.rotateX(-Math.PI/2);const pos=g.attributes.position,cols=[];
+ for(let i=0;i<pos.count;i++){const x=pos.getX(i),z=pos.getZ(i)-3.25,y=surface(x,z);pos.setXYZ(i,x,y,z);const blend=THREE.MathUtils.clamp((y-.79)/3.2,0,1);const c=new THREE.Color(p.hill).lerp(new THREE.Color(p.high),blend);if(atlas){const band=Math.floor((y-.79)*6);c.lerp(new THREE.Color(band%2?0xb9ceae:0x79ad9e),.23)}cols.push(c.r,c.g,c.b)}
+ g.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));g.computeVertexNormals();mesh(g,0xffffff,0,0,0,scene,{vertexColors:true,roughness:porcelain?.56:1});
+ if(atlas){
+  for(let level=1.05;level<3.9;level+=.24)for(const side of [-1,1]){let segment=[];function flush(){if(segment.length>1)line(segment,0x4b8b82,.44);segment=[]}for(let i=0;i<=240;i++){const x=-7.6+i/240*15.2,h=surface(x,ridgeZ(x));if(h>level){const z=ridgeZ(x)+side*1.37*Math.sqrt(Math.log((h-.79)/(level-.79)));segment.push([x,level+.012,z])}else flush()}flush()}
+ }
+ // The ridge railway shares the actual surface function in each art direction.
+ const railPts=[];for(let i=0;i<=150;i++){const x=-6.7+i/150*13.4;railPts.push(new THREE.Vector3(x,surface(x,ridgeZ(x))+.085,ridgeZ(x)))}
+ const railCurve=new THREE.CatmullRomCurve3(railPts);
+ for(const dz of [-.13,.13])tube(railPts.map(v=>[v.x,v.y,v.z+dz]),atlas?0xf2ddbb:0x536d69,.019);
+ for(let i=0;i<=82;i++){const q=railCurve.getPoint(i/82),d=railCurve.getTangent(i/82);const tie=box(.08,.045,.4,p.wood,q.x,q.y-.025,q.z,scene,.01);tie.rotation.y=-Math.atan2(d.z,d.x)}
+ // Sculptural trees deliberately preserve the first study's stacked rounded forms.
+ function tree(x,z,s=1){const y=surface(x,z);const group=new THREE.Group();group.position.set(x,Math.max(.78,y),z);group.scale.setScalar(s);scene.add(group);cylinder(.055,.085,.78,forest?0x9d8562:0xb59b79,0,.4,0,group,10);for(let j=0;j<3;j++)orb(.52-j*.115,.4,.52-j*.115,j%2?p.tree2:p.tree,0,.8+j*.39,0,group);return group}
+ const treeSpots=[[-7,-1],[-6.4,-.1],[-5.9,1.7],[-6.2,2.9],[-4.8,3.6],[-4.3,2.7],[-3.7,3.5],[-1.2,1.5],[.2,1.5],[2.9,2.1],[3.8,2.6],[4.8,3.2],[5.8,2.1],[6.5,1],[6.8,-.1],[6.4,-1.1],[-6.3,-4.2],[-4.8,-4.9],[-2.8,-5.1],[.2,-5.3],[2.8,-5.2],[4.9,-4.6],[6.3,-3.9]];
+ treeSpots.forEach((q,i)=>tree(q[0],q[1],.67+(i%4)*.12));
+ if(forest)for(let i=0;i<34;i++){const x=-7+i%12*1.2,z=-5.5+Math.floor(i/12)*.75;tree(x,z,.76+(i%4)*.1)}
+ // Curved neighborhood avenue and a promenade framing the central cove.
+ const roadPts=[[-7.2,.84,.65],[-5.7,.84,.05],[-3.6,.84,-.35],[-1.6,.84,.15],[.3,.84,.25],[2.4,.84,-.05],[4.7,.84,.1],[6.6,.84,.85]];
+ const roadCurve=new THREE.CatmullRomCurve3(roadPts.map(a=>new THREE.Vector3(...a)));
+ tube(roadPts,p.road,porcelain?.39:.32);if(!atlas)tube(roadPts,forest?0x8e9b85:0x9aaba8,.27);
+ if(porcelain){for(let i=0;i<28;i++){const pt=roadCurve.getPoint(i/27);box(.12,.015,.026,0xf7ead1,pt.x,pt.y+.275,pt.z)}}
+ function windowBox(w,h,x,y,z,group){const o=box(w,h,.045,p.glass,x,y,z,group,.012);glow.push(o.material);return o}
+ function house(x,z,w=1.1,h=1.3,rotation=0){const group=new THREE.Group();group.position.set(x,.85,z);group.rotation.y=rotation;scene.add(group);
+  if(porcelain){
+   box(w+.32,.16,1.52,0xeee2cf,0,.02,0,group,.06);box(w*.65,h,1.1,p.wall,-w*.2,h/2,0,group,.06);box(w*.55,h*.75,.9,p.wall,w*.26,h*.38,.28,group,.05);
+   windowBox(w*.48,h*.58,w*.17,h*.41,.76,group);box(w+.28,.11,1.4,p.wall,0,h+.04,0,group,.035);
+   box(w+.18,.07,.68,p.accent,0,h*.77,.63,group,.02);for(let k=0;k<6;k++)box(.045,.06,.63,0xb77a39,-w*.45+k*w*.18,h*.82,.65,group,.012);
+   box(.06,h*.78,.07,p.wall,w*.53,h*.39,.91,group,.02);box(.06,h*.78,.07,p.wall,-w*.53,h*.39,.91,group,.02);
+  }else{
+   box(w+.16,.14,1.35,atlas?0xe6bc95:p.wood,0,.03,0,group,.04);box(w,h,1.13,p.wall,0,h/2,0,group,.07);
+   const shape=new THREE.Shape();shape.moveTo(-w*.62,0);shape.lineTo(0,atlas?.46:.61);shape.lineTo(w*.62,0);shape.closePath();const rg=new THREE.ExtrudeGeometry(shape,{depth:1.46,bevelEnabled:true,bevelSegments:2,bevelSize:.035,bevelThickness:.035,steps:1});mesh(rg,atlas?p.accent:0x3f665d,0,h,-.72,group);
+   windowBox(w*.54,h*.46,0,h*.56,.595,group);box(.035,h*.49,.055,p.wall,0,h*.56,.63,group,.01);box(w*.6,.035,.055,p.wall,0,h*.56,.63,group,.01);
+   box(w*.23,h*.47,.05,p.wood,-w*.31,h*.25,.61,group,.015);
+   if(forest){for(let k=0;k<7;k++)box(w+.025,.025,.015,0xa08763,0,.17+k*h/8,.586,group,.004);box(w+.4,.08,.62,p.wood,0,.05,.86,group,.025);for(const a of [-1,1])cylinder(.04,.04,h*.79,p.wood,a*w*.58,h*.4,1.03,group,10)}
+  }return group;
+ }
+ if(porcelain){
+  [[-5.3,1.0,1.1,1.4,-.22],[-3.65,.9,1.2,1.75,-.08],[-2.1,1.35,1.05,1.1,.22],[2.15,.95,1.25,1.6,-.14],[3.95,1.25,1.2,1.35,.12],[5.5,1.45,1.0,1.7,.3]].forEach(q=>house(...q));
+  box(2.9,.18,1.5,0xf3e9d5,-4.0,.91,3.1,scene,.12);house(-4.1,3,1.75,1.45,-.12);
+  // Sun terrace with a sculptural canopy and slim uprights.
+  box(2.4,.15,1.7,0xe8d8ba,4.1,.95,3.4,scene,.12);for(const x of [3.1,5.1])box(.06,1.35,.06,p.wall,x,1.65,3.9);box(2.4,.12,1.25,p.accent,4.1,2.36,3.6,scene,.04);
+ }else if(atlas){
+  [[-5.2,1.3,1.0,1.2,-.2],[-3.5,1.3,1.25,1.5,-.12],[-1.9,1.05,1.0,1.0,.1],[1.7,1.15,1.15,1.4,-.12],[3.3,1.35,1.05,1.65,.15],[4.9,1.7,1.3,1.1,.3]].forEach(q=>house(...q));
+  // A rounded courtyard pavilion instead of another row of cottages.
+  cylinder(1.08,1.15,.17,0xdca38a,-4.2,.95,3.5);cylinder(.75,.75,1.0,p.wall,-4.2,1.5,3.5);cylinder(.94,.75,.25,p.glass,-4.2,2.12,3.5);
+  for(const x of [2.7,3.8,4.9])box(.7,.11,1.05,0xeab3a0,x,.95,3.65,scene,.12);
+ }else{
+  [[-5.0,1.6,1.25,1.45,-.2],[-3.1,1.5,1.15,1.7,.06],[-1.2,1.4,1.0,1.1,.1],[2.1,1.45,1.2,1.6,-.16],[4.15,1.6,1.45,1.3,.17],[5.7,1.95,.85,1.45,.32]].forEach(q=>house(...q));
+  house(-4.2,3.6,1.8,1.5,-.12);house(4.1,3.7,1.45,1.1,.2);
+ }
+ function boardwalk(points){const curve=new THREE.CatmullRomCurve3(points.map(q=>new THREE.Vector3(...q)));tube(curve,p.wood,.22);for(let i=0;i<=70;i++){const q=curve.getPoint(i/70),d=curve.getTangent(i/70);const plank=box(.13,.08,.54,forest?0xb19b74:0xd2b894,q.x,q.y+.18,q.z,scene,.012);plank.rotation.y=-Math.atan2(d.z,d.x)}for(let i=0;i<=12;i++){const q=curve.getPoint(i/12);cylinder(.045,.045,.9,p.wood,q.x,q.y-.35,q.z)}return curve}
+ boardwalk([[-2.7,.54,4.6],[-1.6,.54,4.5],[0,.54,4.3],[1.7,.54,4.6],[3.3,.54,4.8]]);
+ if(forest)boardwalk([[-6,.9,3.7],[-4.6,.94,4.4],[-3,.8,4.5],[-1.6,.54,4.5]]);
+ // Lanterns are local points of activity; the global daylight still belongs to preview time.
+ for(const x of [-2.4,.15,2.8]){cylinder(.035,.045,1.15,p.wood,x,1.05,4.6);const light=box(.14,.2,.14,0xf2d2a1,x,1.69,4.6,scene,.035);glow.push(light.material);box(.22,.045,.22,p.glass,x,1.81,4.6)}
+ for(const [x,z] of [[-1,2.35],[.2,1.45],[2.9,2.35],[-3.4,2.6],[-.5,4.4]]){cylinder(.065,.09,.26,atlas?p.accent:0xe0ae6f,x,1.06,z);orb(.085,.09,.085,0xe6c8a5,x,1.31,z)}
+ // Inhabited details follow each art direction's density and material language.
+ for(let i=0;i<(forest?34:16);i++){const a=i*2.399,rr=5.2+Math.sin(i*1.9)*.6;const x=Math.cos(a)*rr,z=Math.sin(a)*rr*.74;if(z>-.6){orb(.24,.18,.26,p.tree2,x,.88,z);if(atlas||porcelain)for(let j=0;j<3;j++)orb(.045,.055,.045,p.accent,x+.14*Math.cos(j*2),1.03,z+.14*Math.sin(j*2))}}
+ // Shoreline traces emphasize the difference between glazed, graphic and natural water.
+ const shoreline=islandShape(1.09).getPoints(160).map(v=>[v.x,.005,v.y]);
+ for(let band=0;band<(atlas?3:2);band++){const pts=shoreline.map(q=>[q[0]*(1+band*.035),q[1],q[2]*(1+band*.035)]);line(pts,atlas?0xe9dfc6:0xd7efde,atlas?.75:.48)}
+ if(atlas){for(let j=0;j<9;j++){const pts=[];for(let i=0;i<=60;i++){const x=-11+i*.36,z=7.0+j*.3+Math.sin(x*.37+j*.18)*.12;if(x*x+z*z<12.5*12.5)pts.push([x,.008,z])}if(pts.length>1)line(pts,0xe8e3cd,.64)}}
+ else{for(let i=0;i<65;i++){const x=-13+(i*7.13)%26,z=-10+(i*3.41)%23;if(Math.abs(x)<8.8&&z>-6.5&&z<5.8)continue;const a=line([[x,.012,z],[x+.22+(i%4)*.12,.012,z+.025]],porcelain?0xc1ebe2:0x86b6a5,.48);ripples.push(a)}}
+ const train=new THREE.Group();scene.add(train);for(let j=0;j<2;j++){const x=-j*.64;box(.58,.33,.38,p.accent,x,.25,0,train,.08);box(.42,.22,.34,p.wall,x,.48,0,train,.05);box(.52,.065,.44,p.glass,x,.62,0,train,.03);box(.31,.13,.012,p.glass,x,.48,.182,train,.01);for(const xx of [-.17,.17]){const wheel=cylinder(.065,.065,.035,0x45635e,x+xx,.1,.2,train,12);wheel.rotation.x=Math.PI/2}}
+ actors.push({kind:'train',object:train,curve:railCurve});
+ const car=new THREE.Group();scene.add(car);box(.6,.18,.3,p.accent,0,.18,0,car);box(.31,.16,.27,p.wall,-.04,.34,0,car);for(const x of [-.18,.18])for(const z of [-.16,.16]){const wheel=cylinder(.065,.065,.04,0x435a57,x,.1,z,car,12);wheel.rotation.x=Math.PI/2}actors.push({kind:'car',object:car,curve:roadCurve});
+ const boat=new THREE.Group();scene.add(boat);orb(.46,.18,.85,p.wood,0,.08,0,boat);box(.6,.07,1.05,p.wall,0,.22,0,boat);box(.44,.36,.5,p.wall,0,.43,-.1,boat);box(.56,.07,.62,p.accent,0,.65,-.1,boat);windowBox(.35,.17,0,.45,.17,boat);cylinder(.017,.017,.55,p.wood,0,.94,-.18,boat,8);actors.push({kind:'boat',object:boat});
+ const lamp=new THREE.PointLight(0xffc48a,0,12,2);lamp.position.set(0,2.1,3);scene.add(lamp);
+ const composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));const ao=new SSAOPass(scene,camera,1,1);ao.kernelRadius=9;ao.minDistance=.002;ao.maxDistance=.12;ao.enabled=knobs.ao;composer.addPass(ao);composer.addPass(new OutputPass());
+ const instance={view,id,scene,p,camera,controls,renderer,composer,ao,actors,ripples,phase:0,treeSpots};
+ instance.light=()=>{scene.background.set(shared.night?(forest?0x102c37:0x243e55):p.sky);fill.color.set(shared.night?0x93b5d2:0xe0f2ef);fill.intensity=shared.night?.92:2.2;sun.color.set(shared.night?0xa7c7f2:0xffe6bd);sun.intensity=shared.night?1.0:3.25;lamp.intensity=shared.night?38:0;renderer.toneMappingExposure=knobs.exposure*(shared.night?.9:1);glow.forEach(m=>{m.emissive.set(shared.night?0xffb56d:0x000000);m.emissiveIntensity=shared.night?1.35:0})};instance.light();
+ const resize=()=>{const w=view.clientWidth,h=view.clientHeight;if(w<2)return;renderer.setSize(w,h,false);composer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();instance.dirty=true};new ResizeObserver(resize).observe(view);resize();
+ controls.addEventListener('change',()=>{instance.dirty=true});instance.dirty=true;instances.push(instance);return instance;
+}
+function move(s,t){for(const a of s.actors){if(a.curve){const u=a.kind==='train'?.51+.28*Math.sin(t*.1):(.57+t*.025)%1;const q=a.curve.getPoint(u),d=a.curve.getTangent(u);a.object.position.copy(q);a.object.position.y+=a.kind==='car'?.29:.025;a.object.rotation.y=-Math.atan2(d.z,d.x);a.object.rotation.z=a.kind==='train'?Math.atan2(d.y,Math.hypot(d.x,d.z)):0}else{a.object.position.set(.3+Math.sin(t*.13)*1.9,.04+Math.sin(t*.9)*.025,6.3+Math.cos(t*.13)*.45);a.object.rotation.y=-.55+Math.cos(t*.13)*.4}}}
+function sync(){root.querySelectorAll('[data-time]').forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.time==='night')===shared.night)));const button=root.querySelector('[data-motion]');button.textContent=shared.motion?'Pause motion':'Play motion';button.setAttribute('aria-pressed',String(shared.motion));instances.forEach(s=>{s.light();s.dirty=true})}
+function persist(){window.openai?.setWidgetState?.({modelContent:{night:shared.night},privateContent:null})?.catch(()=>{})}
+root.querySelectorAll('[data-time]').forEach(b=>b.addEventListener('click',()=>{shared.night=b.dataset.time==='night';sync();persist()}));root.querySelector('[data-motion]').addEventListener('click',()=>{shared.motion=!shared.motion;sync()});
+window.addEventListener('openai:set_globals',e=>{const v=e.detail?.globals?.widgetState?.modelContent;if(typeof v?.night==='boolean'){shared.night=v.night;sync()}});
+try{
+ // Initialize only when a variant is visible, limiting GPU memory and first-render work.
+ function ensure(){root.querySelectorAll('.hb-view').forEach(v=>{if(v.getClientRects().length&&!v.dataset.ready){v.dataset.ready='true';try{const s=build(v);move(s,0)}catch(error){root.querySelector('.hb-footer').textContent='Preview could not initialize: '+error.message;root.querySelector('.hb-footer').setAttribute('role','alert')}}})}
+ ensure();new MutationObserver(ensure).observe(root.querySelector('.viz-carousel'),{attributes:true,subtree:true,attributeFilter:['hidden','style','class']});
+ sync();
+ if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>instances.forEach(s=>{s.ao.enabled=knobs.ao;s.light();s.dirty=true})});tweak.addToggle(knobs,'ao',{label:'Ambient occlusion'});tweak.addSlider(knobs,'exposure',{label:'Exposure',min:.7,max:1.6,step:.05})}
+ let previous=performance.now();function frame(now){const dt=Math.min(.1,(now-previous)/1000);previous=now;for(const s of instances){if(!s.view.getClientRects().length)continue;s.controls.update();if(shared.motion&&!reduced.matches){s.phase+=dt;move(s,s.phase);s.dirty=true}if(s.dirty){s.composer.render();s.dirty=false}}requestAnimationFrame(frame)}requestAnimationFrame(frame);
+}catch(error){root.querySelector('.hb-footer').textContent='Preview could not initialize: '+error.message;root.querySelector('.hb-footer').setAttribute('role','alert')}
+</script>
