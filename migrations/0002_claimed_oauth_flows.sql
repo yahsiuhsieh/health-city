@@ -1,0 +1,1 @@
+ALTER TABLE oauth_flows ADD COLUMN claimed INTEGER NOT NULL DEFAULT 0 CHECK (claimed IN (0, 1));

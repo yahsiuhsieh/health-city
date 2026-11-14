@@ -1,0 +1,27 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "healthcity",
+	"account_id": "a60c3d6442b01f9a8b22b617ab8370bc",
+	"main": "src/worker/index.ts",
+	"compatibility_date": "2026-11-09",
+	"workers_dev": true,
+	"preview_urls": false,
+	"send_metrics": false,
+	"vars": {
+		"APP_ORIGIN": "https://healthcity.yahsiu.workers.dev",
+		"GOOGLE_CLIENT_ID": "803516844844-p4ksknmj74ke72e2cac49flg454a0r4g.apps.googleusercontent.com",
+		"AUTH_ENABLED": "true"
+	},
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "healthcity",
+      "database_id": "d2f77d96-ece4-43b1-9c70-ffc343b3d955",
+      "migrations_dir": "migrations"
+    }
+  ],
+	"observability": {
+		"enabled": false,
+		"redact_query_string": true
+	}
+}
