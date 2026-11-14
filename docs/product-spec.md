@@ -5,6 +5,7 @@ This specification records accepted product behavior and first-release acceptanc
 Use [GLOSSARY.md](../GLOSSARY.md) for domain definitions. Use [data-sources.md](data-sources.md) for API contracts, documented limits, historical Takeout findings, and pending account checks. This specification is the maintained reference for product behavior.
 
 Production access must use Google Health API. Manual Takeout downloads must not be a product requirement. Takeout availability alone does not establish a production feature.
+Google Health API responses are the authoritative product data. App and Takeout comparisons are optional diagnostic evidence, not manual acceptance prerequisites.
 
 ## Experience and world
 
@@ -222,7 +223,7 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 - Dam form, location, capacity, missing-value appearance, and auxiliary motion remain open.
 - Missing RHR must not become zero or an invented value from another date.
 - Distinguish daily RHR from intraday heart-rate samples and HRV. Do not infer instantaneous resting heart rate, stress, or an overall health grade.
-- Check the API's daily date and calculation-method metadata against the app before selecting a canonical value.
+- Check the API's daily date and calculation-method metadata before selecting a canonical value. App comparison is optional.
 - Do not average conflicting methods or fabricate a missing value.
 
 ## Heart-rate mountains and ridge train
@@ -347,7 +348,7 @@ Apply the representative-art gate below before asset expansion. Overall visual a
 
 ## Remaining validation and calibration
 
-- Account access, date attribution, RHR methods, source reconciliation, overlapping sleep awakenings, and agreement with source/app values.
+- Account access, date attribution, RHR methods, source reconciliation, overlapping sleep awakenings, and faithful transformation of API values.
 - Numerical scales, scene capacity, exceptional values, coverage thresholds, and size/saturation conversions using actual records and prototypes.
 - Incomplete or conflicting sessions, pause records, dense exercise days, sleep-route geometry, and very short return intervals.
 - Exact camera limits, small control details, loading, retries, cache and retention mechanics, and measured performance.
@@ -365,7 +366,8 @@ Pass evidence:
 
 - Authorized read-only calls return accepted record types for selected dates.
 - Units, timestamps, methods, and reconciliation are traceable.
-- Values agree with the selected source interpretation. Any app differences have an explained cause.
+- Normalized values, units, dates, and method metadata agree with the API response.
+- Retrieval completeness and transformation checks run in code. Manual app or Takeout comparisons are optional when a specific discrepancy needs investigation.
 
 Failure response:
 
@@ -453,6 +455,9 @@ Recommended validation sequence:
 5. Exercise ordinary, exercise, missing-data, and time-boundary scenarios.
 6. Calibrate scales, density, and performance before expanding the world.
 
-Actual account access requires connection setup and authorization. None occurred. The mixed asset strategy has approval. Blender and the detailed production workflow still require review and approval.
+OAuth setup and deployment occurred. On November 14, 2026, the user reported a successful single-date RHR check and agreement with the source app.
+The user also reported a successful combined core-data inspection. Broader data correctness and coverage checks remain pending.
+The mixed asset strategy has approval. Blender and the detailed production workflow still require review and approval.
 
-The current work is documentation and planning. Interview answers did not perform or authorize live health/weather calls, OAuth changes, cloud deployment, or large-scale implementation.
+Implementation now includes authentication and the manual read-only core-data inspection. The production frontend, retained health history, and automatic synchronization remain unimplemented.
+Interview approval alone does not authorize additional live health/weather calls, account changes, deployment, or large-scale implementation.

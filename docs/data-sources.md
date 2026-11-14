@@ -1,8 +1,16 @@
 # HealthCity Data Sources
 
 Google Health API is the confirmed production source. The product must not require repeated manual Takeout downloads. Takeout is a discovery and comparison fixture.
+The user confirmed Google Health API responses as the authoritative product data on November 14, 2026.
+Manual app and Takeout comparisons are optional diagnostics. They are not acceptance prerequisites for each metric.
 
-This document records feasibility from official documentation, not a successful connection to the user's account. Documentation checks occurred on November 7, 2026. No live health-data requests, OAuth configuration, paid calls, or account changes occurred.
+Initial feasibility findings came from official documentation checks on November 7, 2026. That review made no live requests or account changes.
+Google OAuth configuration, live sign-in, token exchange, session validation, and logout passed on November 13, 2026.
+These authentication checks did not query health records.
+On November 14, 2026, the user reported a successful manual RHR check and agreement with the source app.
+That check exercised token refresh, Google Health account linkage, and retrieval for one source date.
+The user subsequently reported a successful live run of the combined eight-stream inspection on the same date.
+Detailed coverage and source-app agreement beyond the RHR sample remain unverified.
 
 ## Historical Takeout evidence
 
@@ -124,7 +132,11 @@ A future authorized connection requires these steps:
 1. Configure Google Cloud and Google OAuth.
 2. Obtain user consent.
 3. Check that the Google Account links to Google Health.
-4. Implement refresh-token handling for long-term access.
+4. Check refresh-token handling for long-term access.
+
+The manual RHR workflow implements steps 3 and 4. Its deployment passed on November 14, 2026.
+The user reported a successful live single-date RHR check on the same date.
+Long-term refresh behavior and access to other core data types remain unverified.
 
 The accepted health representations require read-only scope groups for activity/fitness, health-metrics/measurements, and sleep. Request only the necessary permissions.
 
@@ -159,7 +171,23 @@ Do not average methods or automatically select the lowest value. Do not present 
 
 References: [RHR schema](https://developers.google.com/health/reference/rest/v4/users.dataTypes.dataPoints#DailyRestingHeartRate), [method enum](https://developers.google.com/health/reference/rest/v4/users.dataTypes.dataPoints#DailyRestingHeartRate.DailyRestingHeartRateMetadata.CalculationMethod), and [vitals guide](https://developers.google.com/health/data-types/vitals).
 
-These findings come from official documentation. No live account requests occurred.
+The schema findings above come from official documentation.
+
+The manual check first refreshes access and checks `users/me/identity` under the existing health-metrics read-only scope.
+An `ACCOUNT_NOT_LINKED` response stops the check. The Worker does not follow a provider-supplied setup URL.
+The check then requests one civil date through `dataPoints:reconcile`, with an inclusive start and exclusive next-date boundary.
+Use `daily_resting_heart_rate.date` in filters. The JSON response field remains `dailyRestingHeartRate`.
+The [filter guide](https://developers.google.com/health/filters) specifies snake case for filter identifiers.
+The RHR stream permits three pages of 25 records. Further pages produce an explicitly incomplete result, without automatic retries.
+The adapter checks the date and integer-string value. It preserves optional method names and source references without selecting a canonical value.
+Unknown method names remain distinct. Absent method metadata remains unknown.
+An empty response establishes only that the query returned no records.
+Health records and source references remain in request memory. Only date, beats per minute, and calculation method appear in the browser result.
+No health record, identity response, access token, or page token enters D1. No new migration is necessary.
+These limits define the RHR inspection, not the final synchronization or retention policy.
+The user reported one successful live result with method `WITH_SLEEP`, and checked that its date and value agreed with the source app.
+This is evidence for one sample. It does not establish agreement across dates, method selection, missing-data handling, or broader reconciliation correctness.
+Reference: [Google Health identity](https://developers.google.com/health/reference/rest/v4/users/getIdentity).
 
 ## Historical weather candidate
 
@@ -186,7 +214,9 @@ No weather data API requests occurred.
 
 ## Zero-cost testing and selected deployment
 
-The user selected a private website on Cloudflare Workers with Static Assets and D1. The selected stack excludes Pages. Testing must remain free. The user confirms Google Health API access is free. No deployment or configuration occurred.
+The user selected a private website on Cloudflare Workers with Static Assets and D1. The selected stack excludes Pages.
+Testing must remain free. The user confirms Google Health API access is free.
+The authentication Worker and dedicated D1 database are deployed. The frontend and automatic synchronization are not implemented.
 
 The following limits reflect documentation checks on November 7, 2026:
 
@@ -199,7 +229,10 @@ The following limits reflect documentation checks on November 7, 2026:
 
 Browser rendering avoids a hosted rendering or GPU service. Private data and OAuth handling still require authorization controls.
 
-Use free capacity to assess feasibility. Address measured limits before adding infrastructure. Google Health account checks and OAuth setup remain pending. These are access and correctness checks, not an unresolved API-price question. No paid public-app verification or third-party assessment has approval.
+Use free capacity to assess feasibility. Address measured limits before adding infrastructure.
+OAuth setup and live sign-in passed. The user reported successful Google Health access and app agreement for one RHR sample.
+The user also reported a successful combined inspection. Broader record correctness and coverage checks remain pending.
+These are access and correctness checks, not an unresolved API-price question. No paid public-app verification or third-party assessment has approval.
 
 Keep services on free tiers. Do not enable paid plans, metered add-ons, or automatic upgrades. If usage reaches a free limit, suspend or defer synchronization. Preserve the last successful data.
 
@@ -229,6 +262,86 @@ Measure representative storage and read/write costs before expanding synchronize
 
 ## Required account checks
 
+### Authentication storage
+
+The OAuth implementation uses these operational tables in D1 Free. It does not store health records or complete Google responses.
+All expiry timestamps use Unix milliseconds. The Worker rejects expired records even before physical cleanup.
+Authentication requests delete expired flows and sessions. No background synchronization or cleanup schedule is configured.
+
+| Table and field | Purpose and resolution | Retention |
+| --- | --- | --- |
+| `oauth_flows.state_hash` | SHA-256 of a random state, primary key for atomic callback claiming | Ten-minute validity, deletion after callback completion, clearing, or the next authentication cleanup after expiry |
+| `oauth_flows.browser_hash` | SHA-256 of a separate random HttpOnly cookie, binds the flow to its initiating browser | Same as the flow |
+| `oauth_flows.pkce_verifier` | Random PKCE verifier for the backend token exchange | Same as the flow |
+| `oauth_flows.oidc_nonce` | Random value checked against the signed Google ID token | Same as the flow |
+| `oauth_flows.expires_at` | Enforces the ten-minute authorization limit | Same as the flow |
+| `oauth_flows.claimed` | Boolean flag for single-use callback processing and guarded sign-in persistence | Same as the flow |
+| `google_connection.id` | Singleton key fixed at `1`, prevents multiple owner connections | Until disconnection |
+| `google_connection.google_sub` | Stable Google subject, pins the first verified owner identity | Until disconnection |
+| `google_connection.refresh_ciphertext` | AES-256-GCM encrypted refresh token, includes its random IV and format version | Until replacement or disconnection |
+| `google_connection.refresh_expires_at` | Optional Google refresh-token expiry, converted to milliseconds | Same as the connection |
+| `google_connection.granted_scope` | Granted scopes required to interpret the current authorization | Same as the connection |
+| `sessions.id_hash` | SHA-256 of the opaque session cookie, primary lookup key | Until logout or the next authentication cleanup after expiry |
+| `sessions.google_sub` | Associates the session with the pinned owner connection | Same as the session |
+| `sessions.created_at` | Enforces the seven-day absolute sign-in limit | Same as the session |
+| `sessions.last_active_at` | Enforces the thirty-minute idle limit | Same as the session |
+
+Status requests do not extend session lifetime. An explicit same-origin activity request records user interaction.
+Logout deletes only the current HealthCity session. It preserves the Google connection and retained history.
+Access tokens and ID tokens remain in request memory and are not persisted.
+OAuth state, session cookies, and token responses must not enter application logs or browser response bodies.
+The token-encryption key and Google client secret belong in Cloudflare secrets, outside D1 and the repository.
+The scope request includes `openid`, `email`, and the activity/fitness, health-metrics/measurements, and sleep read-only scopes.
+The original RHR-only connection requested only the metrics scope. The combined workflow requires renewed consent for older connections.
+The callback requires a new refresh token when the saved connection lacks the expanded scopes.
+OpenID Connect establishes the owner's verified identity. Authentication alone calls no health-data endpoints.
+The separate combined health check calls Google Health only after an explicit form submission.
+It requires an active session before token refresh. Refresh cannot create or restore a HealthCity session.
+Known Google refresh-token expiry stops the request before any outbound call. Failed refresh preserves the saved connection for renewal or disconnection.
+Explicit renewal requests the same scopes with `prompt=consent`, through the existing browser-bound OAuth flow.
+Disconnect requires an active owner session, a same-origin POST, and explicit confirmation.
+The Worker decrypts the refresh token in memory and submits it to Google's revocation endpoint in the POST body.
+Only HTTP 200 or an explicit HTTP 400 `invalid_token` response permits local clearing.
+Other failures preserve local authorization and sessions so the owner can retry. No automatic retries occur.
+Successful clearing deletes all sessions, OAuth flows, and the Google connection in one D1 transaction.
+Sign-in persistence requires its claimed flow to remain present. Clearing the flows prevents an older callback from restoring a connection.
+No health-history tables, raw-response caches, or synchronization jobs exist yet. Their future implementation must extend the clearing inventory.
+Application secrets, the D1 schema, local project files, and Google Health source records remain unchanged.
+Cloudflare-managed recovery backups are outside SQL deletion. Earlier encrypted records can remain until provider retention expires.
+Google revocation can affect all OAuth clients and scopes in the same Google Cloud project, not only the current client.
+References: [Google revocation](https://developers.google.com/identity/protocols/oauth2/web-server#tokenrevoke) and [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/).
+
+### Combined core inspection
+
+The combined workflow replaced the separate RHR-only form on November 14, 2026.
+Deployment and unauthenticated HTTP checks passed. The user reported a successful live run of the expanded workflow on the same date.
+This report establishes workflow completion. It does not establish complete retrieval or correct transformations for every data type.
+The user requested one inspection across the three accepted read-only scope groups.
+One selected date and IANA time zone define the check. Temporal computes UTC boundaries without assuming a 24-hour day.
+Daily RHR and HRV preserve their source date. Intraday streams use the selected day's physical interval.
+
+The workflow checks eight streams: daily RHR, daily HRV, total calories, steps, heart rate, sleep, exercise, and heart-rate-zone intervals.
+Total calories uses a read-only five-minute `rollUp` POST. Other streams use `reconcile` reads.
+Heart-rate means use only returned samples. Counts and first/last timestamps accompany each mean without an inferred continuous-coverage percentage.
+Missing averages and missing buckets remain unavailable. Explicit zero values remain zero.
+Sleep stage intervals and short awakenings remain separate. Exercise retains completion time, active duration, events, and optional zone durations.
+These fields support essential inspection of accepted features. No health data or new operational fields enter D1.
+
+Each stream permits three pages: 25 records per page for daily summaries and sessions, or 1,000 for other streams.
+One refresh and one identity request bring the maximum to 26 Google requests per run.
+Individual requests have ten-second timeouts. The stream sequence stops after 45 seconds.
+The Worker stops remaining streams after quota, network, authorization-expiry, or sequence-timeout failures. No automatic retries occur.
+Independent stream failures do not discard successful results. Results identify partial, failed, and skipped streams explicitly.
+Session validity is checked before each stream and before the response.
+
+Sleep queries include sessions ending on the selected or following date. Exercise filters use civil starts on the previous or selected date.
+Complete intersecting sessions remain intact. Sessions longer than these bounded windows can escape retrieval.
+The known multi-day exercise fixture therefore still requires a broader historical query before full synchronization.
+Finished pagination does not establish exhaustive history, missing-source evidence, or source/app agreement.
+Free-tier CPU time, larger sample sets, and production synchronization remain separate validation gates.
+References: [rollup contract](https://developers.google.com/health/reference/rest/v4/users.dataTypes.dataPoints/rollUp),
+[filter rules](https://developers.google.com/health/filters), and [Temporal implementation](https://github.com/js-temporal/temporal-polyfill).
+
 ### Candidate exercise intensity input
 
 Official documentation identifies two possible inputs:
@@ -256,9 +369,9 @@ References: [exercise fields](https://developers.google.com/health/data-types/wo
 
 These findings come from documentation. No account calls occurred.
 
-### Account comparison
+### Account and transformation checks
 
-Before committing to large-scale implementation, perform a small authorized read-only check of the accepted core types. Compare the same historical dates against Takeout and the app for:
+Before large-scale implementation, check authorized API responses for the accepted core types. Use automated checks for:
 
 - Daily HRV values and source-date attribution.
 - Daily RHR values, date attribution, and calculation-method consistency.
@@ -269,4 +382,33 @@ Before committing to large-scale implementation, perform a small authorized read
 
 API `shortAwakenings` can overlap stage intervals. Do not count their duration twice or assume the API uses Takeout's stage partition.
 
-These checks remain pending. A documented type does not establish a successful account check. Handle authentication secrets through the connection flow. Do not paste them into chat or documentation.
+The user-reported single-date RHR check passed, including an optional comparison with the source app. Broader automated checks remain pending.
+Use app or Takeout comparisons only when a specific discrepancy needs diagnosis. Do not require the user to check each metric manually.
+A documented type does not establish a successful account check.
+Handle authentication secrets through the connection flow. Do not paste them into chat or documentation.
+
+### November 4 inspection outcome
+
+On November 14, the agent inspected the browser result for November 4, 2026, in `America/Chicago`.
+The UTC window was November 4 at 06:00 through November 5 at 06:00, with an exclusive end.
+Seven stream reads completed. The heart-rate read stopped at the three-page limit with 3,000 samples.
+A targeted read of the supplied export found 35,316 heart-rate samples across that full local day.
+Those export samples occupied 1,399 clock minutes, consistent with the earlier fixture summary.
+Heart-rate files split by UTC date. The November 1 file alone cannot establish the November 4 baseline.
+
+The existing partial response contains only the final part of the day. It cannot establish full-day means or missing intervals.
+The first returned five-minute bucket can also contain only part of its samples because pagination stops inside that bucket.
+Resolve bounded heart-rate pagination before treating these means as complete replay inputs. Do not infer a source gap from unrequested pages.
+The continuation implementation supports all eight streams and retains their original filters and page sizes.
+Each explicit batch reads at most ten additional pages across the pending streams.
+Each continuation request requires a valid owner session, the same origin, the selected date and zone, and an opaque page cursor.
+It refreshes access and reads one page: up to 25 daily summaries or sessions, or 1,000 other records.
+The Worker checks session validity again before the response.
+Only normalized inspection data and the next cursor reach the browser. Heart-rate pages combine sample sums and counts across non-overlapping spans.
+Other streams retain their normalized rows and separate methods. Session labels remain unique across continuation pages.
+An empty next cursor establishes pagination completion. Quota, network, expiry, or malformed-response failures stop the batch without automatic retry.
+Progress remains in the current browser page. No D1 fields or migrations are added. Deployment and unauthenticated route checks passed on November 14, 2026. Live continuation verification remains pending.
+Optional export comparisons found matching daily HRV and sleep-session bounds and stage count.
+Calories and reconciled steps differed from simple export sums. These differences do not override the authoritative API values.
+Their exact causes remain unverified. Do not describe them as confirmed rounding or a known source-priority algorithm.
+No additional manual app comparison is required. No health record was added to D1 during this inspection.
