@@ -15,15 +15,18 @@ The user has a C++ background and some HTTP API/OAuth experience. They have no e
 ## Shared learning workflow
 
 - Establish the user's relevant starting knowledge before the first learning milestone. Reuse that context in later milestones.
-- Work in small milestones with observable results.
-- Explain the goal, affected files, and relevant concepts before each change.
+- Use real HealthCity features as learning milestones with observable results.
+- Prefer a complete, usable workflow over many isolated teaching steps.
+- Explain the goal and scope before implementation. Explain each tool or environment change before execution.
 - Define unfamiliar terms in plain language.
 - Explain how the code works. Explain why each important choice fits HealthCity.
-- Keep changes small enough for the user to review and understand.
-- Do not deliver a large finished feature before the user can understand its construction.
-- Inspect each milestone's result with the user.
-- Explain the important code, data flow, trade-offs, and checks.
-- Allow questions and practical exercises before the next substantial milestone.
+- Keep implementation scoped to the current real workflow so the user can review it.
+- After implementation, explain each created or changed file and its role in the workflow.
+- Inspect the working result with the user. Explain important code, data flow, trade-offs, and checks.
+- Use standalone examples only for small concepts that benefit from isolation, such as an OAuth concept.
+- Do not create mock applications or extra learning documents solely to divide a real workflow into smaller lessons.
+- Prefer explanations in chat and updates to maintained project documents over a new document for each milestone.
+- Allow questions and optional practical exercises without making them prerequisites for useful implementation.
 - Let the user set the pace. Do not require approval for every line or routine check.
 - Use practical HealthCity tasks for learning.
 - Teach Vite configuration, development previews, production builds, and their relationship to TypeScript checks.
@@ -49,6 +52,8 @@ The user has a C++ background and some HTTP API/OAuth experience. They have no e
 - Read the relevant document sections. Do not load every document on each turn.
 - Use the Takeout evidence summary in [docs/data-sources.md](docs/data-sources.md) for historical fixture findings.
 - Use Google Health API for production data. Do not substitute Takeout as the production source.
+- Treat Google Health API responses as the authoritative product data. Use app or Takeout comparisons only for targeted diagnosis, not mandatory manual acceptance.
+- Check retrieval completeness, units, dates, missing-data states, and transformations in code. Do not require the user to check each metric manually.
 - Use Cloudflare Workers with Static Assets and D1.
 - Keep testing free. Do not enable paid upgrades automatically.
 - Persist only data required by accepted features, authorization, synchronization, or essential validation.
