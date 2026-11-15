@@ -85,6 +85,14 @@ Only explicit activity requests extend the idle deadline. Status requests do not
 Same-origin checks protect state-changing requests. Each successful sign-in issues a fresh random session identifier.
 Logout preserves the Google connection.
 
+Protected inspection and disconnect routes return HTTP 401 with a sign-in link when the session is unavailable.
+Session API responses retain their existing JSON or plain-text format.
+
+The global limit of 16 pending OAuth flows bounds storage. It does not prevent deliberate sign-in denial.
+An unauthenticated client can fill this limit until flows expire. Origin checks prevent browser CSRF, but do not authenticate clients.
+Deployment-level abuse protection remains unresolved. This change does not configure Cloudflare rate limiting.
+Replacing the oldest flow would cancel valid pending sign-ins and would not eliminate the denial risk.
+
 The Settings link opens `Clear HealthCity Data and Disconnect` for a signed-in owner.
 Opening this confirmation page does not clear data. Its explicit same-origin POST submits the clearing request.
 The Worker decrypts the refresh token in memory and sends it to Google's revocation endpoint in the POST body.
@@ -224,10 +232,15 @@ Run `npm run dev` only when a local server is needed and startup has authorizati
 Run `npm run deploy` only when a deployment has authorization.
 Wrangler uses the existing Cloudflare login. The project commands disable telemetry and keep logs in `.wrangler/logs`.
 
+Wrangler disables `keep_names` because the diagnostic page embeds shared merge functions through `toString()`.
+The browser regression test builds with Wrangler and executes the served script for all eight streams.
+The frontend milestone must replace this temporary script delivery with a separate browser build.
+
 ## Source map
 
-- `src/worker/index.ts` handles backend HTTP requests.
-- `src/worker/auth.ts` handles sign-in, callback validation, sessions, activity, and logout.
+- `src/worker/index.ts` serves public resources and delegates application requests.
+- `src/worker/http.ts` supplies shared response headers and response construction.
+- `src/worker/auth.ts` defines application routes and handles sign-in, callback validation, sessions, activity, logout, disconnect, and health checks.
 - `src/worker/google.ts` constructs Google requests and checks signed ID tokens with `jose`.
 - `src/worker/google-health.ts` checks account linkage and bounds API pagination for eight core streams.
 - `src/worker/health-data.ts` derives time-zone boundaries and converts source records into inspection tables.

@@ -1,3 +1,4 @@
+import { respond } from "./http.ts";
 import type { D1Database } from "@cloudflare/workers-types";
 import { authorizationUrl, createGoogleClient, hasHealthScopes } from "./google.ts";
 import { createGoogleHealthClient, HealthCheckError, isInspectionStream } from "./google-health.ts";
@@ -5,6 +6,7 @@ import type { HealthInspection } from "./google-health.ts";
 import { dayWindow } from "./health-data.ts";
 import { healthCheckHtml } from "./health-check.ts";
 import { AuthStore, FLOW_MS, SESSION_MS } from "./store.ts";
+import type { Connection } from "./store.ts";
 import { encryptionKeyBytes, encryptRefreshToken, decryptRefreshToken, hash, randomToken, readCookie, secureCookie } from "./security.ts";
 
 export interface Env {
@@ -17,17 +19,8 @@ export interface Env {
   AUTH_ENABLED?: string;
 }
 
-export const FLOW_COOKIE = "__Host-hc_oauth";
+const FLOW_COOKIE = "__Host-hc_oauth";
 export const SESSION_COOKIE = "__Host-hc_session";
-export const RESPONSE_HEADERS = {
-  "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store",
-  "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff",
-  "Content-Security-Policy": "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-};
-
-export function respond(body: string | null, status = 200, extra: Record<string, string> = {}): Response {
-  return new Response(body, { status, headers: { ...RESPONSE_HEADERS, ...extra } });
-}
 
 function configFor(env: Env) {
   if (env.AUTH_ENABLED !== "true" || !env.DB || !env.APP_ORIGIN || !env.GOOGLE_CLIENT_ID ||
@@ -82,6 +75,12 @@ ${failed ? '<p>Disconnect could not be completed. No HealthCity data was cleared
     { "Content-Type": "text/html; charset=utf-8", "Referrer-Policy": "same-origin" });
 }
 
+function signInRequired(): Response {
+  return respond(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign-in required</title>
+<h1>Sign-in required</h1><p>Sign in to continue.</p><p><a href="/auth/status">Return to HealthCity sign-in</a></p></html>`, 401,
+    { "Content-Type": "text/html; charset=utf-8", "Referrer-Policy": "same-origin" });
+}
+
 function healthPage(date = "", timeZone = "", result?: HealthInspection, message?: string, status = 200): Response {
   return respond(healthCheckHtml(date, timeZone, result, message), status,
     {
@@ -90,9 +89,25 @@ function healthPage(date = "", timeZone = "", result?: HealthInspection, message
     });
 }
 
+function usableConnection(connection: Connection | null, now: number): connection is Connection {
+  return connection !== null && hasHealthScopes(connection.granted_scope) &&
+    (connection.refresh_expires_at === null || connection.refresh_expires_at > now);
+}
+
+const routes = new Map([
+  ["/", "GET"], ["/auth/status", "GET"], ["/api/session", "GET"],
+  ["/auth/google/start", "POST"], ["/auth/google/callback", "GET"],
+  ["/auth/logout", "POST"], ["/api/session/activity", "POST"],
+  ["/settings/disconnect", "GET"], ["/auth/disconnect", "POST"],
+  ["/checks/health", "GET"], ["/checks/health/run", "POST"],
+]);
+
 export function createAuthHandler(google = createGoogleClient(), clock: () => number = Date.now, health = createGoogleHealthClient()) {
   return async (request: Request, env: Env): Promise<Response> => {
     const url = new URL(request.url);
+    const method = routes.get(url.pathname);
+    if (!method) return respond("Not found.", 404);
+    if (request.method !== method) return respond("Method not allowed.", 405, { Allow: method });
     const isCallback = url.pathname === "/auth/google/callback";
     const config = configFor(env);
     if (!config) {
@@ -108,9 +123,8 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
     const sessionId = readCookie(request, SESSION_COOKIE);
     const sessionHash = sessionId ? await hash(sessionId) : null;
     if (url.pathname === "/checks/health" || url.pathname === "/checks/health/run") {
-      if (!sessionHash || !await store.session(sessionHash, now)) return respond("Sign-in required.", 401);
-      if (url.pathname === "/checks/health" && request.method === "GET") return healthPage();
-      if (url.pathname !== "/checks/health/run" || request.method !== "POST") return respond("Method not allowed.", 405);
+      if (!sessionHash || !await store.session(sessionHash, now)) return signInRequired();
+      if (url.pathname === "/checks/health") return healthPage();
       if (request.headers.get("Content-Type")?.split(";")[0] !== "application/x-www-form-urlencoded") {
         return healthPage("", "", undefined, "Select one valid source date and IANA time zone.", 400);
       }
@@ -122,8 +136,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
         return healthPage("", "", undefined, "Select one valid source date and IANA time zone.", 400);
       }
       const connection = await store.connection();
-      if (!connection || !hasHealthScopes(connection.granted_scope) ||
-          (connection.refresh_expires_at !== null && connection.refresh_expires_at <= now)) {
+      if (!usableConnection(connection, now)) {
         return healthPage(date, timeZone, undefined, "Google authorization needs renewal. Grant all three read-only permissions below.", 409);
       }
       const continuation = form.get("pageToken");
@@ -132,7 +145,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
         return respond("Invalid continuation request.", 400);
       }
       if ((continuation === null || form.get("activity") === "true") && !await store.activity(sessionHash, clock())) {
-        return respond("Sign-in required.", 401);
+        return signInRequired();
       }
       let accessToken: string;
       try {
@@ -142,32 +155,31 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
         return healthPage(date, timeZone, undefined, "Google authorization could not be renewed. Retry later or use Renew Google authorization below.", 503);
       }
       try {
-        if (!await store.session(sessionHash, clock())) return respond("Sign-in required.", 401);
+        if (!await store.session(sessionHash, clock())) return signInRequired();
         if (continuation !== null) {
           const result = await health.streamPage(accessToken, window, form.get("stream")!, continuation);
-          if (!await store.session(sessionHash, clock())) return respond("Sign-in required.", 401);
+          if (!await store.session(sessionHash, clock())) return signInRequired();
           return respond(JSON.stringify(result), 200, { "Content-Type": "application/json; charset=utf-8" });
         }
         await health.checkIdentity(accessToken);
-        if (!await store.session(sessionHash, clock())) return respond("Sign-in required.", 401);
+        if (!await store.session(sessionHash, clock())) return signInRequired();
         const result = await health.inspectAll(accessToken, window, () => store.session(sessionHash, clock()));
-        if (!await store.session(sessionHash, clock())) return respond("Sign-in required.", 401);
+        if (!await store.session(sessionHash, clock())) return signInRequired();
         return healthPage(date, timeZone, result);
       } catch (error) {
-        if (!await store.session(sessionHash, clock())) return respond("Sign-in required.", 401);
+        if (!await store.session(sessionHash, clock())) return signInRequired();
         return healthPage(date, timeZone, undefined, error instanceof HealthCheckError ? error.message
           : "The Google Health check could not be completed. No health records were saved. Retry later.", 503);
       }
     }
     if (url.pathname === "/settings/disconnect" || url.pathname === "/auth/disconnect") {
-      if (!sessionHash || !await store.session(sessionHash, now)) return respond("Sign-in required.", 401);
-      if (url.pathname === "/settings/disconnect" && request.method === "GET") return disconnectPage();
-      if (url.pathname !== "/auth/disconnect" || request.method !== "POST") return respond("Method not allowed.", 405);
+      if (!sessionHash || !await store.session(sessionHash, now)) return signInRequired();
+      if (url.pathname === "/settings/disconnect") return disconnectPage();
       if (request.headers.get("Content-Type")?.split(";")[0] !== "application/x-www-form-urlencoded") return respond("Confirmation required.", 400);
       const form = new URLSearchParams(await request.text());
       if (form.getAll("confirmation").length !== 1 || form.get("confirmation") !== "disconnect") return respond("Confirmation required.", 400);
       const connection = await store.connection();
-      if (!connection) return respond("Sign-in required.", 401);
+      if (!connection) return signInRequired();
       try {
         const token = await decryptRefreshToken(connection.refresh_ciphertext, config.encryptionKey, connection.google_sub, config.clientId);
         await google.revoke(token);
@@ -198,8 +210,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
       const connection = await store.connection();
       const renew = request.headers.get("Content-Type")?.split(";")[0] === "application/x-www-form-urlencoded" &&
         new URLSearchParams(await request.text()).get("renew") === "true";
-      const needsConsent = renew || !connection || !hasHealthScopes(connection.granted_scope) ||
-        (connection.refresh_expires_at !== null && connection.refresh_expires_at <= now);
+      const needsConsent = renew || !usableConnection(connection, now);
       return respond(null, 303, {
         Location: authorizationUrl(config, state, await hash(verifier), nonce, needsConsent),
         "Set-Cookie": secureCookie(FLOW_COOKIE, browserId, FLOW_MS / 1000),
@@ -226,8 +237,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
         if (identity.email !== config.owner) return redirect("failed");
         const previous = await store.connection();
         if (previous && previous.google_sub !== identity.subject) return redirect("failed");
-        if (!identity.refreshToken && (!previous || (previous.refresh_expires_at !== null && previous.refresh_expires_at <= now))) return redirect("failed");
-        if (!identity.refreshToken && previous && !hasHealthScopes(previous.granted_scope)) return redirect("failed");
+        if (!identity.refreshToken && !usableConnection(previous, now)) return redirect("failed");
         const refreshCiphertext = identity.refreshToken
           ? await encryptRefreshToken(identity.refreshToken, config.encryptionKey, identity.subject, config.clientId)
           : previous!.refresh_ciphertext;

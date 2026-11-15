@@ -2,6 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "healthcity",
 	"account_id": "a60c3d6442b01f9a8b22b617ab8370bc",
+	"keep_names": false,
 	"main": "src/worker/index.ts",
 	"compatibility_date": "2026-11-09",
 	"workers_dev": true,

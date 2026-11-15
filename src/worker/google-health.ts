@@ -75,17 +75,23 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
     return object(await response.json());
   }
 
+  async function readPage(stream: (typeof streams)[number], window: DayWindow, accessToken: string, pageToken: string, timeout = 10_000) {
+    const request = pageRequest(stream, window, pageToken);
+    const response = await read(request.url, accessToken, request.body, timeout);
+    const points = response[request.field] ?? [];
+    const nextPageToken = response.nextPageToken === undefined ? "" : response.nextPageToken;
+    if (!Array.isArray(points) || points.length > stream.pageSize || typeof nextPageToken !== "string" ||
+        (nextPageToken !== "" && nextPageToken === pageToken)) {
+      throw new HealthCheckError("Google Health returned an invalid page.");
+    }
+    return { points, nextPageToken };
+  }
+
   return {
     async streamPage(accessToken: string, window: DayWindow, key: string, pageToken: string) {
       const stream = streams.find((item) => item.key === key);
       if (!stream) throw new HealthCheckError("Unknown health data stream.");
-      const request = pageRequest(stream, window, pageToken);
-      const response = await read(request.url, accessToken, request.body);
-      const points = response[request.field] ?? [];
-      const nextPageToken = response.nextPageToken ?? "";
-      if (!Array.isArray(points) || points.length > stream.pageSize || typeof nextPageToken !== "string" || nextPageToken === pageToken) {
-        throw new HealthCheckError("Google Health returned an invalid continuation page.");
-      }
+      const { points, nextPageToken } = await readPage(stream, window, accessToken, pageToken);
       return { data: inspectRecords(key, points, window), nextPageToken };
     },
     async checkIdentity(accessToken: string): Promise<void> {
@@ -112,15 +118,11 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
           for (let page = 0; page < 3; page++) {
             const remaining = deadline - Date.now();
             if (remaining <= 0) throw new HealthCheckError("The manual check reached its time limit. Remaining requests stopped.", true);
-            const request = pageRequest(stream, window, pageToken);
-            const data = await read(request.url, accessToken, request.body, Math.max(1, Math.min(10_000, remaining)));
-            const rows = data[request.field] ?? [];
-            if (!Array.isArray(rows) || rows.length > stream.pageSize ||
-                (data.nextPageToken !== undefined && typeof data.nextPageToken !== "string")) throw new Error("Invalid Google Health page.");
-            points.push(...rows);
-            pageToken = data.nextPageToken as string | undefined ?? "";
+            const data = await readPage(stream, window, accessToken, pageToken, Math.max(1, Math.min(10_000, remaining)));
+            points.push(...data.points);
+            pageToken = data.nextPageToken;
             if (!pageToken) { complete = true; break; }
-            if (tokens.has(pageToken)) throw new Error("Repeated Google Health page token.");
+            if (tokens.has(pageToken)) throw new HealthCheckError("Google Health returned a repeated page token.");
             tokens.add(pageToken);
           }
           checks.push({ key: stream.key, title: stream.title, state: complete ? "complete" : "partial",

@@ -8,7 +8,7 @@ function escapeHtml(value: string): string {
 
 export const CHECK_CSS = `body{font:16px/1.5 system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#203331;background:#f7f9f8}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{border-bottom:1px solid #cbd7d3;padding:.5rem;text-align:left;vertical-align:top}caption{text-align:left;font-weight:600;margin:.6rem 0}details{margin:1rem 0;padding:.8rem;background:white;border:1px solid #cbd7d3;border-radius:.4rem}summary{cursor:pointer;font-weight:600}.scroll{overflow:auto;max-height:26rem}label{display:block}input,button{font:inherit;padding:.5rem}form p{display:inline-block;margin-right:1rem}button{cursor:pointer}button:disabled{cursor:wait}.muted{color:#546b65}.error{border-left:4px solid #a33;padding:.5rem 1rem}a{color:#185d52}`;
 
-export const CHECK_SCRIPT = `const mergeHeartRows=${mergeHeartRows.toString()};
+const CHECK_SCRIPT = `const mergeHeartRows=${mergeHeartRows.toString()};
 const mergeInspectionPages=${mergeInspectionPages.toString()};
 const form=document.getElementById('health-check');
 const button=document.getElementById('run-check');

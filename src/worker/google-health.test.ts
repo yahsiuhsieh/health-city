@@ -55,6 +55,22 @@ describe("Complete read-only health inspection", () => {
     expect(html).not.toContain("synthetic-access");
   });
 
+  it.each([{ dataPoints: {} }, { nextPageToken: 42 }, { nextPageToken: null }, { dataPoints: Array(26).fill({}) }])
+  ("rejects malformed pages in initial and continuation reads (%j)", async (page) => {
+    const client = createGoogleHealthClient(async () => Response.json(page));
+    const initial = await client.inspectAll("synthetic-access", window);
+    expect(initial.checks[0]!.state).toBe("failed");
+    expect(initial.checks[0]!.message).toBe("Google Health returned an invalid page.");
+    await expect(client.streamPage("synthetic-access", window, "daily-resting-heart-rate", "cursor"))
+      .rejects.toThrow("Google Health returned an invalid page.");
+  });
+
+  it("rejects repeated cursors in initial and continuation reads", async () => {
+    const client = createGoogleHealthClient(async () => Response.json({ nextPageToken: "cursor" }));
+    expect((await client.inspectAll("synthetic-access", window)).checks[0]!.state).toBe("failed");
+    await expect(client.streamPage("synthetic-access", window, "steps", "cursor")).rejects.toThrow("invalid page");
+  });
+
   it("bounds each stream to three pages without declaring a partial read complete", async () => {
     let calls = 0;
     const fetcher = vi.fn<typeof fetch>(async () => Response.json({ nextPageToken: `page-${++calls}` }));

@@ -245,7 +245,10 @@ describe("Google OAuth and owner sessions", () => {
     };
     const response = await f.request("/checks/health/run", "POST", cookie, origin, "date=2026-11-08&timeZone=UTC");
     expect(response.status).toBe(401);
-    expect(await response.text()).toBe("Sign-in required.");
+    const body = await response.text();
+    expect(body).toContain('href="/auth/status"');
+    expect(body).not.toContain("synthetic-private");
+    expect(body).not.toContain("beatsPerMinute");
     expect(f.sql.prepare("SELECT * FROM google_connection").get()).toBeUndefined();
   });
 
@@ -294,6 +297,19 @@ describe("Google OAuth and owner sessions", () => {
     expect((await f.callback(flow)).headers.get("Location")).toContain("failed");
     expect(f.sql.prepare("SELECT * FROM google_connection").get()).toBeUndefined();
     expect(f.sql.prepare("SELECT * FROM sessions").get()).toBeUndefined();
+  });
+
+  it("provides a sign-in link for protected pages without changing API responses", async () => {
+    const f = fixture();
+    for (const path of ["/checks/health", "/settings/disconnect"]) {
+      const response = await f.request(path);
+      expect(response.status).toBe(401);
+      expect(response.headers.get("Content-Type")).toContain("text/html");
+      expect(await response.text()).toContain('href="/auth/status"');
+    }
+    const session = await f.request("/api/session");
+    expect(session.status).toBe(401);
+    expect(session.headers.get("Content-Type")).toContain("application/json");
   });
 
   it("uses PKCE, nonce, minimal scopes, and a browser-bound one-use flow", async () => {
