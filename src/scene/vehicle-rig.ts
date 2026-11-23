@@ -1,3 +1,4 @@
+import { TRANSPARENT_LAYER } from "./ocean/layers.ts";
 import {
   AdditiveBlending, CylinderGeometry, DoubleSide, Group, Mesh, MeshStandardMaterial,
   Object3D, ShaderMaterial, SpotLight, Vector3,
@@ -71,6 +72,7 @@ export function createVehicleRig(source: Group) {
     beams.push(lamp);
 
     const beam = new Mesh(beamGeometry, beamMaterial);
+    beam.layers.set(TRANSPARENT_LAYER);
     beam.position.copy(emitter).addScaledVector(direction, BEAM_LENGTH / 2);
     beam.quaternion.setFromUnitVectors(new Vector3(0, -1, 0), direction);
     headlights.add(beam);

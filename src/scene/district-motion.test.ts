@@ -1,63 +1,104 @@
 import { expect, it } from "vitest";
 import { stepsAt, SYNTHETIC_DAYS, trafficAt } from "../core/representative-day.ts";
-import { onDiagonal,inlandBlocks, inlandNorth, inlandSouth, laneHalfWidth, crossings, groundHeight, PAVING_Y, ROAD_Y, stopLineX, streets, vehicleRoutes } from "./harbor-layout.ts";
+import { CITY_PLAN } from "./city/city-plan.data.ts";
+import { cityWalk, crossings, neighborhoodWalk, plazaRoute, promenadeRoute, vehicleRoutes, walkingHeight } from "./city/routes.ts";
+import { roadSurfaces } from "./city/street-graph.ts";
+import type { Point } from "./city/street-graph.ts";
+import { signalAt } from "./city/traffic-signals.ts";
+import { surfaceHeight } from "./city/terrain.ts";
+import { DOCK } from "./harbor-layout.ts";
 import { districtMotion } from "./district-motion.ts";
 
-it("fits the longest vehicle within the road on every bend and lowers both ends of each crossing", () => {
-  const { coast, back, market, side, north, south, half } = streets;
-  function onRoad(x: number, z: number) {
-    const along = z >= south - half && z <= north + half && [coast, back].some(lane => Math.abs(x - lane) <= half);
-    const across = x >= back - half && x <= coast + half && [market, side, north, south].some(lane => Math.abs(z - lane) <= half);
-    const inlandAlong = z >= inlandSouth-half && z <= inlandNorth+half && [back,...inlandBlocks.map(b=>b.west)].some(lane=>Math.abs(x-lane)<=laneHalfWidth);
-    const inlandAcross = x >= inlandBlocks[5]!.west-half && x <= back+half && [market,side,inlandNorth,inlandSouth].some(lane=>Math.abs(z-lane)<=laneHalfWidth);
-    if ((Math.abs(x-inlandBlocks[0]!.west)<half && z>market+4.5 && z<inlandNorth-half) ||
-        (Math.abs(x-inlandBlocks[4]!.west)<half && z>inlandSouth+half && z<side-half)) return false;
-    return onDiagonal(x,z) || along || across || inlandAlong || inlandAcross;
-  }
-  for (const route of new Set(vehicleRoutes)) {
-    for (let distance = 0; distance < route.length; distance += .23) {
-      const { x, z, yaw } = route.at(distance);
-      for (const end of [-2.33, 2.33]) for (const edge of [-.97, .97]) {
-        expect(onRoad(x + end * Math.sin(yaw) + edge * Math.cos(yaw),
-          z + end * Math.cos(yaw) - edge * Math.sin(yaw))).toBe(true);
-      }
+const roads = roadSurfaces(CITY_PLAN);
+function onRoad(x:number,z:number) {
+  return roads.some(({polygon}) => {
+    let inside = false;
+    for (let i=0,j=polygon.length-1;i<polygon.length;j=i++) {
+      const [a,b]=polygon[i]!, [c,d]=polygon[j]!;
+      if ((b>z)!==(d>z) && x<(c-a)*(z-b)/(d-b)+a) inside=!inside;
     }
-  }
-  for (const cross of crossings) for (const sign of [-1, 1]) {
-    const height = (d: number) => groundHeight(cross.x + (cross.alongX ? sign * d : 0), cross.z + (cross.alongX ? 0 : sign * d));
-    expect(height(streets.half)).toBeCloseTo(ROAD_Y);
-    expect(height(streets.half + .725)).toBeCloseTo((ROAD_Y + PAVING_Y) / 2);
-    expect(height(streets.half + 1.45)).toBeCloseTo(PAVING_Y);
+    return inside;
+  });
+}
+const mod = (d:number,len:number) => (d%len+len)%len;
+
+it("fits the longest vehicle within the paved road on every bend", () => {
+  for (const route of vehicleRoutes) for (let d=0;d<route.length;d+=.23) {
+    const {x,z,yaw}=route.at(d);
+    for (const end of [-2.33,2.33]) for (const edge of [-.97,.97])
+      expect(onRoad(x+end*Math.sin(yaw)+edge*Math.cos(yaw),z+end*Math.cos(yaw)-edge*Math.sin(yaw))).toBe(true);
   }
 });
 
-it("stops on an empty approach, yields to the shopper, and restores the queue after a backward seek", () => {
-  const day = SYNTHETIC_DAYS[1];
-  const motion = districtMotion(day);
-  const car = (i: number, time: number) => vehicleRoutes[i]!.at(motion.driveDistance(i, time));
-  expect(stepsAt(day, 600).pedestrianCount).toBe(0);
-  let stoppedAt = 0;
-  for (let time=12;time<day.durationSeconds-240;time+=12) {
-    const pose = car(0,time);
-    if (Math.abs(pose.x-(stopLineX-2.55))<.02 && Math.abs(pose.z-(streets.market+1.65))<.02 &&
-      motion.driveDistance(0,time)===motion.driveDistance(0,time+60)) { stoppedAt=time; break; }
+it("uses marked crossings to change sidewalks and lowers feet on both approaches", () => {
+  for (const route of [cityWalk,neighborhoodWalk,promenadeRoute,plazaRoute]) {
+    for (let d=0;d<route.length;d+=.25) {
+      const {x,z}=route.at(d);
+      if (onRoad(x,z)) expect(route.gates.some(g=>d>=g.start && d<=g.end)).toBe(true);
+    }
+    for (const g of route.gates) for (const u of [0,.5,1]) {
+      const d=g.start+u*(g.end-g.start), {x,z}=route.at(d);
+      expect(walkingHeight(route,d)-surfaceHeight(x,z)).toBeCloseTo(u===.5?.06:.16);
+    }
   }
-  expect(stoppedAt).toBeGreaterThan(0);
-  expect(motion.driveDistance(0,stoppedAt+300)).toBeGreaterThan(motion.driveDistance(0,stoppedAt));
-  const marketDay = districtMotion(SYNTHETIC_DAYS[3]);
-  const walker = marketDay.walkers[1]!;
-  const before = walker.route.at(marketDay.walkDistance(1, 30500));
-  const during = walker.route.at(marketDay.walkDistance(1, 31200));
-  expect(before.z).toBeGreaterThan(streets.market + streets.half);
-  expect(Math.abs(during.z-streets.market)).toBeLessThan(.5);
-  expect(Math.abs(during.x-crossings[1].x)).toBeLessThan(1);
-  expect(marketDay.driveDistance(0, 31200)).toBe(marketDay.driveDistance(0, 30500));
-  expect(marketDay.driveDistance(0, 32800)).toBeGreaterThan(marketDay.driveDistance(0, 31200));
-  const crossingTime=64608;
-  const shopper=motion.walkers.findIndex(w=>w.style.asset==="pedestrian-shopper");
-  const direct = districtMotion(day);
-  expect(motion.walkDistance(shopper, crossingTime + .25)).toBe(direct.walkDistance(shopper, crossingTime + .25));
-  expect(motion.driveDistance(0, crossingTime)).toBe(direct.driveDistance(0, crossingTime));
+});
+
+it("stops on an empty minor approach and then proceeds", () => {
+  const base = SYNTHETIC_DAYS[0];
+  const day = {...base,stepTotals:base.stepTotals.map(()=>0),calorieTotals:base.calorieTotals.map(()=>100)};
+  const motion = districtMotion(day);
+  let stopped = false;
+  for (let t=0;t<day.durationSeconds-240 && !stopped;t+=30) {
+    for (const [i,route] of motion.vehicleRoutes.entries()) {
+      const d = motion.driveDistance(i,t);
+      if (route.gates.some(g=>g.control==="stop" && g.stop && Math.abs(mod(d-g.start+1,route.length)-1)<.001)
+        && motion.driveDistance(i,t+60)===d && motion.driveDistance(i,t+240)>d) stopped=true;
+    }
+  }
+  expect(stopped).toBe(true);
+});
+
+it("stops on red, yields to a person on the zebra and restores the queue after a seek", () => {
+  const day=SYNTHETIC_DAYS[0], motion=districtMotion(day);
+  let red=false, yieldTime=0, heldSlot=0, walkerSlot=0;
+  for (let t=0;t<day.durationSeconds-60 && !(red && yieldTime);t+=30) {
+    for (const [i,r] of motion.vehicleRoutes.slice(0,trafficAt(day,t).vehicleCount).entries()) {
+      const d=motion.driveDistance(i,t);
+      for (const g of r.gates) {
+        if (Math.abs(mod(d-g.start+1,r.length)-1)>.001 || motion.driveDistance(i,t+12)!==d) continue;
+        if (g.control==="signal" && signalAt(g.entry,t).light==="red") red=true;
+        for (const [j,w] of motion.walkers.slice(0,stepsAt(day,t).pedestrianCount).entries()) {
+          const s=mod(motion.walkDistance(j,t),w.route.length);
+          if (w.route.gates.some(c=>(c.crossing===g.entry || c.crossing===g.exit) && s>c.start+.5 && s<c.end-.5)) {
+            yieldTime=t; heldSlot=i; walkerSlot=j;
+          }
+        }
+      }
+    }
+  }
+  expect(red).toBe(true); expect(yieldTime).toBeGreaterThan(0);
+  motion.driveDistance(heldSlot,day.durationSeconds);
+  const direct=districtMotion(day);
+  expect(motion.driveDistance(heldSlot,yieldTime+.25)).toBe(direct.driveDistance(heldSlot,yieldTime+.25));
+  expect(motion.walkDistance(walkerSlot,yieldTime+.25)).toBe(direct.walkDistance(walkerSlot,yieldTime+.25));
+});
+
+it("holds both turn lanes at the Market crossing until the pedestrian clears",()=>{
+  const day=SYNTHETIC_DAYS[0], motion=districtMotion(day), noon=12*3600;
+  const index=crossings.findIndex(c=>c.node==="market-end" && c.edge==="central-market/market-end");
+  expect(trafficAt(day,noon).vehicleCount).toBeGreaterThanOrEqual(2);
+  expect(motion.walkers.slice(0,stepsAt(day,noon).pedestrianCount).some((w,i)=>{
+    const d=mod(motion.walkDistance(i,noon),w.route.length);
+    return w.route.gates.some(g=>g.crossing===index && d>g.start+3 && d<g.end-3);
+  })).toBe(true);
+  for (const [i,route] of motion.vehicleRoutes.slice(0,2).entries()) {
+    const gate=route.gates.find(g=>g.entry===index)!;
+    const d=motion.driveDistance(i,noon);
+    expect(mod(d,route.length)).toBeCloseTo(gate.start);
+    expect(signalAt(index,noon).light).toBe("red");
+    expect(motion.driveDistance(i,noon+60)).toBe(d);
+    expect(motion.driveDistance(i,49200)).toBeGreaterThan(d);
+  }
 });
 
 it("keeps active vehicles clear of each other and of people on the crossings across all five fixture days", () => {
@@ -74,7 +115,7 @@ it("keeps active vehicles clear of each other and of people on the crossings acr
     const motion = districtMotion(day);
     for (let time = 0; time < day.durationSeconds; time += 12) {
       const count = trafficAt(day, time).vehicleCount;
-      const cars = vehicleRoutes.slice(0, count).map((route, i) => route.at(motion.driveDistance(i, time)));
+      const cars = motion.vehicleRoutes.slice(0, count).map((route, i) => route.at(motion.driveDistance(i, time)));
       const people = motion.walkers.slice(0, stepsAt(day, time).pedestrianCount)
         .map((walker, i) => walker.route.at(motion.walkDistance(i, time)));
       for (const [i, car] of cars.entries()) {
@@ -90,20 +131,48 @@ it("keeps active vehicles clear of each other and of people on the crossings acr
   }
 });
 
-it("takes every visible vehicle slot inland and reaches the outer road with one car", () => {
-  for (const [i,route] of vehicleRoutes.entries()) {
-    const positions = Array.from({length:Math.ceil(route.length)},(_,d)=>route.at(d).x);
-    expect(Math.min(...positions)).toBeLessThan(i ? -95 : inlandBlocks[5]!.west);
-    expect(Math.max(...positions)).toBeGreaterThanOrEqual(streets.back-2);
+it("takes every vehicle inland and covers the arterials and local streets",()=>{
+  expect(vehicleRoutes).toHaveLength(5);
+  const used=new Set(vehicleRoutes.flatMap(r=>r.legs.map(l=>l.edge)));
+  for (const edge of CITY_PLAN.edges.filter(e=>e.cls==="arterial" || e.cls==="boulevard")) expect(used.has(edge.id)).toBe(true);
+  const local=CITY_PLAN.edges.filter(e=>e.cls==="local");
+  expect(local.filter(e=>used.has(e.id)).length).toBeGreaterThanOrEqual(local.length/2);
+  for (const day of SYNTHETIC_DAYS) {
+    const routes=districtMotion(day).vehicleRoutes;
+    expect(routes[0]!.legs.some(l=>l.edge==="ridge-harbor/ridge-market")).toBe(true);
+    for (const route of routes) expect(route.legs.some(l=>l.points.some(([x])=>x < -95))).toBe(true);
   }
 });
 
-it("takes the first pedestrian to the mountain foot and both residential streets on every fixture day",()=>{
+it("connects the working pier, mountain foot, and both residential districts for the first walker every day",()=>{
   for(const day of SYNTHETIC_DAYS){
-    const route=districtMotion(day).walkers[0]!.route;
-    for(const [x,z] of [[-197.2,0],[-133,-22],[-133,18.2],[-4.3,3.6]] as const){
+    const motion=districtMotion(day), route=motion.walkers[0]!.route;
+    for(const [x,z] of [[DOCK.x,DOCK.z+3.6],[-222,69],[-222,7],[-152,-58]] satisfies Point[]){
       const p=route.at(route.nearest(x,z));
-      expect(Math.hypot(p.x-x,p.z-z)).toBeLessThan(1);
+      expect(Math.hypot(p.x-x,p.z-z)).toBeLessThan(6);
+      if (x!==DOCK.x) {
+        const distance=route.nearest(x,z);
+        expect(distance).toBeGreaterThan(motion.walkDistance(0,0));
+        expect(distance).toBeLessThan(motion.walkDistance(0,day.durationSeconds));
+      }
     }
   }
+});
+
+it("admits pedestrians to a signalized crossing only on its walk phase",()=>{
+  const day=SYNTHETIC_DAYS[0], motion=districtMotion(day);
+  let admissions=0;
+  for(let t=0;t<day.durationSeconds-6;t+=6) {
+    if((t+6)%300===0)continue;
+    for (const [i,w] of motion.walkers.slice(0,stepsAt(day,t).pedestrianCount).entries()) {
+      const before=motion.walkDistance(i,t),after=motion.walkDistance(i,t+6);
+      for(const g of w.route.gates) {
+        const start=g.start+Math.round((before-g.start)/w.route.length)*w.route.length;
+        if(before>start+.0001 || after<=start+.0001)continue;
+        if(CITY_PLAN.nodes.find(n=>n.id===crossings[g.crossing]!.node)!.control!=="signal")continue;
+        expect(signalAt(g.crossing,t).walk).toBe(true);admissions++;
+      }
+    }
+  }
+  expect(admissions).toBeGreaterThan(0);
 });

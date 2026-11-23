@@ -1,8 +1,8 @@
-import { stepsAt, trafficAt } from "../core/representative-day.ts";
+import { HARBOR_VEHICLE_LIMIT, stepsAt, trafficAt } from "../core/representative-day.ts";
 import type { ReplayDay } from "../core/representative-day.ts";
 import { dailyModelOrder } from "./seeded-order.ts";
-import { cityWalk, branchRoute, neighborhoodWalk, diagonal, inlandBlocks, inlandNorth, inlandSouth, crossings, plazaRoute, promenadeRoute, stopDistance, streets, vehicleRoutes } from "./harbor-layout.ts";
-import type { StreetRoute } from "./loop-path.ts";
+import { cityWalk, neighborhoodWalk, plazaRoute, promenadeRoute, vehicleRoutes } from "./city/routes.ts";
+import { signalApproaches, signalAt } from "./city/traffic-signals.ts";
 import { walkingPace } from "./walk-route.ts";
 
 export const walkerStyles = [
@@ -15,70 +15,8 @@ export const walkerStyles = [
   { asset:"pedestrian-shopper", speed:.0033, strideLength:.73, arms:[.13,.035], lean:.024 },
 ] as const;
 
-// Find each passage through a crosswalk once. A route can cross it in both directions.
-function passage(route: StreetRoute, inside: (distance: number) => boolean) {
-  const spans: {
-    start: number;
-    end: number;
-  }[] = [];
-  let origin = 0;
-  while (origin < route.length && inside(origin)) origin++;
-  if (origin >= route.length) return [{
-    start: 0,
-    end: route.length
-  }];
-  let start: number | undefined;
-  for (let d = origin; d <= origin + route.length + .11; d += .1) {
-    if (inside(d)) {
-      start ??= d;
-    } else if (start !== undefined) {
-      spans.push({
-        start,
-        end: d
-      });
-      start = undefined;
-    }
-  }
-  return spans;
-}
-function crossingGates(route: StreetRoute, pedestrian: boolean) {
-  const gates: {
-    crossing: number;
-    start: number;
-    end: number;
-  }[] = [];
-  for (const [index, c] of crossings.entries()) {
-    const inside = (distance: number) => {
-      const p = route.at(distance),
-        dx = Math.abs(p.x - c.x),
-        dz = Math.abs(p.z - c.z);
-      return (c.alongX ? dx : dz) <= streets.half + (pedestrian ? .3 : .85) && (c.alongX ? dz : dx) <= (pedestrian ? 1.6 : 3.85);
-    };
-    gates.push(...passage(route, inside).map(span => ({
-      ...span,
-      crossing: index
-    })));
-  }
-  return gates;
-}
-const walkRoutes = [cityWalk, neighborhoodWalk, cityWalk, plazaRoute, cityWalk, neighborhoodWalk];
+const walkRoutes = [cityWalk, neighborhoodWalk, promenadeRoute, plazaRoute, cityWalk, neighborhoodWalk];
 const CAR_START = walkRoutes.length;
-const intersections = [streets.coast, streets.back,...inlandBlocks.map(block=>block.west)].flatMap(x => [streets.market, streets.side, streets.north, streets.south, inlandNorth, inlandSouth].map(z => ({
-  x,
-  z
-})));
-intersections.push({x:diagonal[1][0],z:diagonal[1][1]});
-const junctionGates = vehicleRoutes.map(route => intersections.flatMap(({
-  x,
-  z
-}, junction) => passage(route, d => {
-  const p = route.at(d);
-  return Math.abs(p.x - x) < 6.15 && Math.abs(p.z - z) < 6.15;
-}).map(span => ({
-  ...span,
-  junction
-}))));
-const carGates = vehicleRoutes.map(route => crossingGates(route, false));
 function relative(distance: number, start: number, length: number) {
   return ((distance - start + length / 2) % length + length) % length - length / 2;
 }
@@ -92,17 +30,18 @@ export function districtMotion(day: ReplayDay) {
     route: i!==0 && roster[i]!.asset === "pedestrian-shopper" ? promenadeRoute : route,
     style: roster[i]!
   }));
-  const walkGates = walkers.map(({ route }) => crossingGates(route, true));
-  const routes = [...walkers.map(w => w.route), ...vehicleRoutes];
-  const offsets = [.19, .16, .64, .69, .9, .38, .16, .48, .11, .78];
+  const carsToday = [vehicleRoutes[0]!, ...dailyModelOrder(vehicleRoutes.slice(1), "street-loops", day.date)].slice(0,HARBOR_VEHICLE_LIMIT);
+  const walkGates = walkers.map(({ route }) => route.gates);
+  const routes = [...walkers.map(w => w.route), ...carsToday];
+  const offsets = [.35, .16, .70, .69, .9, .38, .57, .48, .11, .78];
   const histories = routes.map((route, i) => {
     const samples = new Float64Array(Math.ceil(day.durationSeconds / STEP) + 1);
     samples[0] = route.length * offsets[i]!;
     return samples;
   });
-  const speeds = vehicleRoutes.map(() => CRUISE);
-  const heldFor = vehicleRoutes.map(() => 0);
-  const releasedLap = vehicleRoutes.map(() => -Infinity);
+  const speeds = carsToday.map(() => CRUISE);
+  const heldFor = carsToday.map(() => 0);
+  const lastStop = carsToday.map(() => -Infinity);
   const curbWait = walkers.map(() => 0);
   const lastCurb = walkers.map(() => -Infinity);
   let last = 0;
@@ -114,7 +53,7 @@ export function districtMotion(day: ReplayDay) {
       let distance = histories[i]![tick]!;
       for (let tried = 0; tried < route.length; tried += 1.3) {
         const p = route.at(distance);
-        const inCrossing = crossings.some(c => Math.abs(p.x - c.x) < 4.4 && Math.abs(p.z - c.z) < 4.4);
+        const inCrossing = route.gates.some(g => { const d=relative(distance,g.start,route.length); return d>-.5 && d<g.end-g.start+.5; });
         const occupied = walkers.slice(0, i).some((_, j) => Math.hypot(position(j).x - p.x, position(j).z - p.z) < .85);
         if (!inCrossing && !occupied) break;
         distance += 1.3;
@@ -122,51 +61,64 @@ export function districtMotion(day: ReplayDay) {
       histories[i]![tick] = distance;
     }
     for (let i = oldCars; i < newCars; i++) {
-      const route = vehicleRoutes[i]!;
+      const route = carsToday[i]!;
       let distance = histories[CAR_START + i]![tick]!;
       for (let tried = 0; tried < route.length; tried += 4) {
         const p = route.at(distance);
-        const nearJunction = intersections.some(c => Math.abs(p.x - c.x) < 10 && Math.abs(p.z - c.z) < 10);
-        const occupied = vehicleRoutes.slice(0, i).some((_, j) => Math.hypot(position(CAR_START + j).x - p.x, position(CAR_START + j).z - p.z) < 9);
+        const nearJunction = route.gates.some(g => { const d=relative(distance,g.start,route.length); return d>-2 && d<g.span+2; });
+        const occupied = carsToday.slice(0, i).some((_, j) => Math.hypot(position(CAR_START + j).x - p.x, position(CAR_START + j).z - p.z) < 9);
         if (!nearJunction && !occupied) break;
         distance += 4;
       }
       histories[CAR_START + i]![tick] = distance;
       heldFor[i] = 0;
+      lastStop[i] = -Infinity;
     }
   }
+  placeArrivals(0,0,trafficAt(day,0).vehicleCount,0,stepsAt(day,0).pedestrianCount);
   function advance() {
     const time = last * STEP;
     const { pedestrianCount: walkCount, endSeconds } = stepsAt(day, time);
     const carCount = trafficAt(day, time).vehicleCount;
     const distances = histories.map(samples => samples[last]!);
-    const cars = vehicleRoutes.map((route, i) => route.at(distances[CAR_START + i]!));
-    const junctions = intersections.map(() => ({
-      owner: -1,
-      approach: Infinity
-    }));
-    for (let i = 0; i < carCount; i++) for (const gate of junctionGates[i]!) {
-      const delta = relative(distances[CAR_START + i]!, gate.start, vehicleRoutes[i]!.length);
-      if (delta <= -9 || delta >= gate.end - gate.start) continue;
-      // A vehicle inside the junction keeps priority until its rear clears.
-      const remaining = delta > .001 ? -1 : Math.max(0, -delta);
-      const claim = junctions[gate.junction]!;
-      if (remaining < claim.approach) {
-        claim.approach = remaining;
-        claim.owner = i;
+    const cars = carsToday.map((route, i) => route.at(distances[CAR_START + i]!));
+    const phases = signalApproaches.map((_,i) => signalAt(i,time));
+    type Gate = typeof carsToday[number]["gates"][number];
+    const claims = new Map<string,{car:number; gate:Gate; priority:number}>();
+    const occupiedCrossings = new Set<number>();
+    const waitingCrossings = new Set<number>();
+    for (let i=0;i<walkCount;i++) {
+      const {route} = walkers[i]!;
+      for (const gate of route.gates) {
+        const delta = relative(distances[i]!,gate.start,route.length);
+        if (delta>.0001 && delta<gate.end-gate.start) occupiedCrossings.add(gate.crossing);
+        if (delta>=-1 && delta<=.0001) waitingCrossings.add(gate.crossing);
       }
     }
-    const pedestrianHasPriority = crossings.map(() => false);
-    const vehicleInCrossing = crossings.map(() => false);
-    for (let i = 0; i < carCount; i++) for (const gate of carGates[i]!) {
-      const delta = relative(distances[CAR_START + i]!, gate.start, vehicleRoutes[i]!.length);
-      if (delta > .02 && delta < gate.end - gate.start) vehicleInCrossing[gate.crossing] = true;
+    const inJunction = new Set<string>();
+    function blocked(gate: Gate) {
+      if (occupiedCrossings.has(gate.entry) || occupiedCrossings.has(gate.exit)) return true;
+      if (gate.control==="signal" && gate.entry>=0) return phases[gate.entry]!.light!=="green";
+      return waitingCrossings.has(gate.entry) || waitingCrossings.has(gate.exit);
+    }
+    for (let i=0;i<carCount;i++) {
+      const route = carsToday[i]!;
+      for (const gate of route.gates) {
+        const delta = relative(distances[CAR_START+i]!,gate.start,route.length);
+        if (delta < -9 || delta >= gate.span) continue;
+        const inside = delta>.0001;
+        if (inside) inJunction.add(gate.node);
+        if (!inside && blocked(gate)) continue;
+        const priority = inside ? -100-delta : -delta+(gate.stop?1:0);
+        if (priority < (claims.get(gate.node)?.priority ?? Infinity))
+          claims.set(gate.node,{car:i,gate,priority});
+      }
     }
     for (const [i, { route, style }] of walkers.entries()) {
       let step = style.speed * STEP;
       for (const gate of walkGates[i]!) {
         const delta = relative(distances[i]!, gate.start, route.length);
-        if (delta >= -1.55 && delta < gate.end - gate.start && i < walkCount) pedestrianHasPriority[gate.crossing] = true;
+
         if (delta <= .0001 && delta >= -1) {
           const marker = Math.round(distances[i]! - delta);
           if (delta >= -.0001 && lastCurb[i] !== marker) {
@@ -176,7 +128,8 @@ export function districtMotion(day: ReplayDay) {
               curbWait[i] = 0;
             }
           }
-          if (lastCurb[i] !== marker || vehicleInCrossing[gate.crossing]) step = Math.min(step, Math.max(0, -delta));
+          if (lastCurb[i] !== marker || inJunction.has(signalApproaches[gate.crossing]!.node.id) ||
+              (signalApproaches[gate.crossing]!.node.control==="signal" && !phases[gate.crossing]!.walk)) step = Math.min(step, Math.max(0, -delta));
         }
       }
       // Leave space for a slower walker on the same pavement.
@@ -188,46 +141,37 @@ export function districtMotion(day: ReplayDay) {
       step *= walkingPace(route, distances[i]!);
       histories[i]![last + 1] = distances[i]! + step;
     }
-    for (const [i, route] of vehicleRoutes.entries()) {
+    for (const [i, route] of carsToday.entries()) {
       const distance = distances[CAR_START + i]!,
         car = cars[i]!;
       let room = Infinity;
-      if (route === branchRoute) {
-        const stop = relative(distance, stopDistance, route.length);
-        const lap = Math.round((distance - stopDistance) / route.length);
-        if (pedestrianHasPriority[1] && stop <= .001 && stop > -12) room = Math.min(room, Math.max(0, -stop));
-        if (stop < .02 && stop > -12 && releasedLap[i] !== lap) {
-          if (stop >= -.001) heldFor[i]! += STEP;
-          if (heldFor[i]! >= 120) {
-            releasedLap[i] = lap;
-            heldFor[i] = 0;
-          } else room = Math.min(room, Math.max(0, -stop));
+      for (const gate of route.gates) {
+        const delta = relative(distance,gate.start,route.length);
+        if (delta > .0001 || delta < -12) continue;
+        const marker = Math.round(distance-delta);
+        let mustStop = false;
+        if (gate.control==="stop" && gate.stop && lastStop[i]!==marker) {
+          if (delta>=-.0001) heldFor[i]! += STEP;
+          if (heldFor[i]!>=120) {lastStop[i]=marker; heldFor[i]=0;}
+          else mustStop = true;
         }
-      }
-      for (const gate of carGates[i]!) {
-        const delta = relative(distance, gate.start, route.length);
-        if (pedestrianHasPriority[gate.crossing] && delta <= .02 && delta > -12) room = Math.min(room, Math.max(0, -delta));
+        const owner = claims.get(gate.node);
+        // Two turn lanes can depart together when their paths diverge.
+        const other = owner?.gate;
+        const separateTurns = other && gate.entry>=0 && gate.entry===other.entry &&
+          ((gate.turn>.3 && other.turn<-.3 && gate.lane<other.lane) ||
+           (other.turn>.3 && gate.turn<-.3 && other.lane<gate.lane));
+        if (mustStop || blocked(gate) || (owner && owner.car!==i && !separateTurns))
+          room = Math.min(room, Math.max(0,-delta));
       }
       for (let j = 0; j < cars.length; j++) {
         if (i === j || i < carCount && j >= carCount) continue;
-        if (route === vehicleRoutes[j]) {
-          const gap = relative(distances[CAR_START + j]!, distance, route.length);
-          if (gap > 0 && gap < 12) room = Math.min(room, Math.max(0, gap - 6.05));
-        }
         const other = cars[j]!,
           dx = other.x - car.x,
           dz = other.z - car.z;
         const ahead = dx * Math.sin(car.yaw) + dz * Math.cos(car.yaw);
         const across = Math.abs(dx * Math.cos(car.yaw) - dz * Math.sin(car.yaw));
         if (ahead > 0 && ahead < 12 && across < 2.1 && Math.cos(car.yaw - other.yaw) > .3) room = Math.min(room, Math.max(0, ahead - 5.85));
-      }
-      for (const gate of junctionGates[i]!) {
-        const delta = relative(distance, gate.start, route.length);
-        const owner = junctions[gate.junction]!.owner;
-        const crossesOtherTraffic = owner >= 0 && owner !== i;
-        if (crossesOtherTraffic && delta <= .0001 && delta > -12) {
-          room = Math.min(room, Math.max(0, -delta));
-        }
       }
       const desired = Math.min(CRUISE, Math.sqrt(.00009 * Math.max(0, room)));
       speeds[i] = Math.min(desired, speeds[i]! + .00024 * STEP);
@@ -250,6 +194,7 @@ export function districtMotion(day: ReplayDay) {
   }
   return {
     walkers,
+    vehicleRoutes: carsToday,
     walkDistance: (slot: number, seconds: number) => sample(slot, seconds),
     driveDistance: (slot: number, seconds: number) => sample(CAR_START + slot, seconds)
   };

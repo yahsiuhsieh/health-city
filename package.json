@@ -20,7 +20,10 @@
     "asset:pedestrian": "node scripts/build-pedestrian.mjs",
     "asset:vehicles": "node scripts/build-vehicles.mjs",
     "test:browser": "playwright test",
-    "secret:google": "WRANGLER_SEND_METRICS=false WRANGLER_LOG_PATH=.wrangler/logs wrangler secret put GOOGLE_CLIENT_SECRET"
+    "secret:google": "WRANGLER_SEND_METRICS=false WRANGLER_LOG_PATH=.wrangler/logs wrangler secret put GOOGLE_CLIENT_SECRET",
+    "asset:city": "node scripts/build-city-kit.mjs && node scripts/build-city-flora.mjs",
+    "asset:sleep": "node scripts/build-sleep-assets.mjs",
+    "asset:fleet": "node scripts/build-harbor-fleet.mjs"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.68.0",

@@ -1,3 +1,4 @@
+import { OverviewModel } from "./city/OverviewModel.tsx";
 import { useEffect, useMemo } from "react";
 import { useFrame, useLoader } from "@react-three/fiber";
 import { Mesh, Vector3 } from "three";
@@ -7,7 +8,7 @@ import { stepsAt } from "../core/representative-day.ts";
 import type { ReplayDay } from "../core/representative-day.ts";
 import { walkerStyles } from "./district-motion.ts";
 import type { DistrictMotion } from "./district-motion.ts";
-import { groundHeight } from "./harbor-layout.ts";
+import { walkingHeight } from "./city/routes.ts";
 import { ankleOffset, createLegSolver, footfall, hipDrop } from "./walk-gait.ts";
 import { angleDifference } from "./walk-route.ts";
 
@@ -25,7 +26,7 @@ export function HarborWalk({ day, replay, motion, onReady }: {
   }), []);
   const figures = useMemo(() => {
     return motion.walkers.map(({route,style}) => {
-      const gltf = gltfs[walkerStyles.indexOf(style)]!;
+      const gltf = gltfs[walkerStyles.findIndex(candidate=>candidate.asset===style.asset)]!;
       const model = gltf.scene.clone(true);
       model.visible = false;
       model.traverse(item => { if (item instanceof Mesh) item.castShadow = true; });
@@ -72,7 +73,7 @@ export function HarborWalk({ day, replay, motion, onReady }: {
       const rise = -.027 + .018 * transfer ** 2;
       model.position.set(
         pose.x + sway * Math.cos(heading),
-        groundHeight(pose.x,pose.z) + rise * scale.y * moving,
+        walkingHeight(walkPath,distance) + rise * scale.y * moving,
         pose.z - sway * Math.sin(heading),
       );
       model.rotation.y = heading;
@@ -94,7 +95,7 @@ export function HarborWalk({ day, replay, motion, onReady }: {
         target.set(
           fromX + (to.x + lateral * Math.cos(to.yaw) - fromX) * foot.blend
             + ankle.forward * scale.z * Math.sin(footHeading),
-          groundHeight(from.x,from.z)*(1-foot.blend) + groundHeight(to.x,to.z)*foot.blend + ankle.height * scale.y,
+          walkingHeight(walkPath,distance+(foot.from-distance)*moving)*(1-foot.blend) + walkingHeight(walkPath,distance+(foot.to-distance)*moving)*foot.blend + ankle.height * scale.y,
           fromZ + (to.z - lateral * Math.sin(to.yaw) - fromZ) * foot.blend
             + ankle.forward * scale.z * Math.cos(footHeading),
         );
@@ -121,6 +122,6 @@ export function HarborWalk({ day, replay, motion, onReady }: {
     }
   });
   return <group name="Harbor walk">
-    {figures.map(({ model }) => <primitive key={model.uuid} object={model} dispose={null} />)}
+    {figures.map(({ model }) => <OverviewModel key={model.uuid} model={model} animated/>)}
   </group>;
 }

@@ -5,6 +5,8 @@ import { BufferGeometry,Color,DoubleSide,Float32BufferAttribute,Group,Vector3,Me
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { ReplayDay } from "../core/representative-day.ts";
 import type { Replay } from "../core/replay.ts";
+import { ridgeFootX } from "./city/ridge-foot.ts";
+import { surfaceHeight } from "./city/terrain.ts";
 import { ridgeLength,ridgeProfile } from "./ridge-profile.ts";
 import { SignText } from "./HarborBlock.tsx";
 
@@ -16,8 +18,12 @@ function ridgeMesh(profile:Profile,n:number){
     const h=valid?profile.height(sample):5;
     const rail=valid?y:3;
     const roll=Math.sin(17*u)+.6*Math.cos(42*u),rock=Math.cos(29*u);
-    return [[-199,.48,end],[crest+23+roll,2.8+.8*roll,end],[crest+16+rock,rail*(.5+.08*roll),end],[x+1.25,rail-.10,end],
-      [x-1.25,rail-.10,end],[crest+4+rock,h*(.78+.05*roll),end],[crest,h,end],[crest-5-roll,h*(.79+.04*rock),end],[-248+roll,4+rock,end],[-256,.45,end]];
+    const toe=ridgeFootX(end), grade=surfaceHeight(toe,end), rise=rail-grade;
+    const bank=toe-(toe-x)*.35, shoulder=toe-(toe-x)*.70;
+    const back=-256;
+    return [[toe,grade-.04,end],[bank,grade+.14*rise,end],[shoulder,grade+(.48+.04*roll)*rise,end],[x+1.25,rail-.10,end],
+      [x-1.25,rail-.10,end],[crest+4+rock,h*(.78+.05*roll),end],[crest,h,end],
+      [crest+(back-crest)*.34,h*(.79+.04*rock),end],[crest+(back-crest)*.74,4+rock,end],[back,.45,end]];
   }
   const palette=["#a6b18a","#91a178","#7c936e","#9b927e","#7e946e","#899779","#8f9582","#758a72","#a4aa8a"];
   for(const r of profile.ranges){
@@ -45,7 +51,7 @@ function ridgeMesh(profile:Profile,n:number){
     const edge=section(u,u===0?0:1-1e-9,profile.ranges[u===0?0:profile.ranges.length-1]!.valid);
     for(let i=1;i<edge.length;i++){
       const a=edge[i-1]!,b=edge[i]!;
-      const tip=[-232,.46,(u===0?1:-1)*81];
+      const tip=[profile.x(u),.46,(u===0?1:-1)*81];
       for(const p of [a,b,tip]){positions.push(...p);const c=new Color(palette[i-1]);colors.push(c.r,c.g,c.b)}
     }
   }
@@ -73,7 +79,7 @@ function tunnelMesh(profile:Profile,start:number,end:number){
     const p=profile.track(u),next=profile.track(u+.00001);
     const side=new Vector3(p.z-next.z,0,next.x-p.x).normalize();
     const apron=Math.min(1,Math.max(0,Math.min(u-start,end-u)*ridgeLength/3));
-    const width=outer?(lip?2.15:3+9*apron):1.77;
+    const width=outer?(lip?2.15:Math.min(3+9*apron,(ridgeFootX(p.z)-p.x-1.2)/1.10)):1.77;
     const floor=outer&&!lip?.42:p.y-.32;
     const at=(dx:number,y:number)=>new Vector3(p.x+dx*side.x,y,p.z+dx*side.z);
     const points=[at(-width,floor)];
@@ -153,10 +159,10 @@ export function HeartRidge({day,replay,available,inspect}:{day:ReplayDay;replay:
         const z=shoulder?(i%2?1:-1)*(74+3*u):profile.z(u);
         const offset=kind==="tree"?16+3*Math.sin(31*u)+4*Math.cos(i*1.7):3+2*Math.sin(i*.83);
         const rear=i%2===0;
-        const x=shoulder?-232+6*Math.sin(i+(kind==="rock"?4:0)):rear?crest-(kind==="tree"?15+4*Math.sin(i*.79):5+3*Math.cos(i)):crest+offset;
-        if (Math.abs(x-profile.track(u).x)<2.9) continue;
+        const x=shoulder?profile.x(z>0?0:1)+4*Math.sin(i+(kind==="rock"?4:0)):rear?crest-(kind==="tree"?15+4*Math.sin(i*.79):5+3*Math.cos(i)):crest+offset;
+        if (x>ridgeFootX(z)-1.4 || Math.abs(x-profile.track(u).x)<2.9) continue;
         ray.set(new Vector3(x,75,z),new Vector3(0,-1,0));
-        const hit=ray.intersectObject(surface)[0];if(!hit)continue;
+        const hit=ray.intersectObject(surface)[0];if(!hit || hit.point.y<surfaceHeight(x,z)-.04)continue;
         const size=.85+.32*Math.cos(i*.86);
         dummy.position.set(x,hit.point.y+(kind==="tree"?1.42*size:0),z);
         dummy.rotation.set(0,i*2.4,kind==="rock"?.26:0);

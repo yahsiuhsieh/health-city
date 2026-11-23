@@ -65,34 +65,19 @@ function batch(parent) {
 
 const quay = batch(root);
 const { box, cylinder, beam } = quay;
-// Concrete caisson, rub rail, recessed joints and a steel access ladder at the berth face.
 const edge = port.quayEdge - port.craneX;
-const low = -12.8, high = 3.25;
-box([edge,-.39,(low+high)/2],[.16,.80,high-low],"slab");
-for (let z = low + .45; z < high; z += 2.35) {
-  box([edge+.11,-.25,z],[.16,.73,.37],"rubber",[0,0,-.045],.035);
-  box([edge+.19,-.26,z],[.05,.60,.26],"iron");
+for(let z=-12.8;z<3.25;z+=2.35)box([edge-.40,.055,z+.46],[.32,.035,.92],"yellow");
+for(const x of [-1.05,1.05]){
+  for(const z of [-.97,.97])cylinder([x,.32,z],.19,.16,"iron",[0,0,Math.PI/2]);
+  box([x,.42,0],[.27,.27,2.47],"steel",undefined,.035);
 }
-for (let z = low; z < high; z += 2.35) box([edge-.22,.022,z+.46],[.32,.035,.92],"yellow");
-for (const z of [-8,2.88]) {
-  box([edge-.45,.095,z],[.65,.16,.67],"iron",undefined,.045);
-  cylinder([edge-.45,.31,z],.19,.36,"yellow");
-  cylinder([edge-.45,.52,z],.255,.12,"yellow");
-}
-for (const z of [-8.98,-8.51]) {
-  beam([edge+.18,-.94,z],[edge+.18,.28,z],.043,"steel");
-  beam([edge+.18,.28,z],[edge-.15,.28,z],.044,"steel");
-}
-for(let y=-.84;y<.28;y+=.25)beam([edge+.18,y,-8.98],[edge+.18,y,-8.51],.034,"yellow");
-
-// Slewing pedestal crane: bolted plinth, access ladder, cab, winch and a tapered lattice jib.
-box([0,.15,0],[2.55,.30,2.4],"slab",undefined,.07);
-cylinder([0,.37,0],.91,.18,"iron");
+box([0,.50,0],[2.55,.23,2.26],"iron",undefined,.05);
+cylinder([0,.68,0],.91,.18,"yellow");
 cylinder([0,1.18,0],.55,1.48,"steel");
 cylinder([0,1.93,0],.87,.20,"yellow");
 for(let i=0;i<12;i++) {
   const a=i*Math.PI/6;
-  cylinder([.76*Math.cos(a),.49,.76*Math.sin(a)],.055,.065,"edge",undefined,6);
+  cylinder([.76*Math.cos(a),.79,.76*Math.sin(a)],.055,.065,"edge",undefined,6);
 }
 for (const z of [-.22,.22]) beam([-.77,.28,z],[-.77,2.09,z],.031,"iron");
 for(let y=.46;y<2.1;y+=.27)beam([-.77,y,-.22],[-.77,y,.22],.026,"yellow");

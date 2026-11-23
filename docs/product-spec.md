@@ -18,6 +18,8 @@ Google Health API responses are the authoritative product data. App and Takeout 
 - Use the inspected Takeout for discovery and comparison. Use Google Health API for production.
 - Prioritize desktop exploration, with a simplified mobile view.
 - Keep recognizable roads, coastline, and landmarks stable across dates. Data changes local terrain details and daily activity.
+- Line city streets with permanent background buildings of three to eight storeys. Give them a distinct architectural style. Keep their roofs at least 12 m below the shortest HRV tower.
+- Use quays, seawalls, revetments, and sandy coves along the urban coast. Connect the waterfront promenade to the street network.
 - Give data buildings or blocks recognizable, stable roles across dates. Records change their state rather than automatically adding one building per record.
 - A data role does not require one metric per building or finalize an unspecified mapping.
 - Use lower, distinctive landmarks for specific data themes. Use ordinary high-rises to represent daily HRV through their count.
@@ -206,7 +208,8 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 - Keep building forms consistent at the same plots across dates. Do not randomly rearrange heights or silhouettes.
 - Exact art direction and plot-occupancy order remain open.
 - HRV is not cumulative activity or an overall health score. Do not sum intraday RMSSD values to create construction progress.
-- When daily HRV is unavailable, use fixed neutral translucent wireframe placeholders at the designated plots. Show `No HRV data`.
+- An unoccupied HRV plot shows a fixed interim form. It can contain an older low-rise building, a pocket park, or a plaza. HRV plots never show construction.
+- When daily HRV is unavailable, show a neutral paved base and the fixed translucent tower envelope on every plot. Omit the interim form and show `No HRV data`.
 - Placeholders mean unavailable information, not an HRV value or yesterday's count. Other world elements continue normally.
 - Capacity, sleep-day attribution, and optional personal-reference comparison remain open.
 - Exact distinctions between loading, missing records, and authorization failure remain open.

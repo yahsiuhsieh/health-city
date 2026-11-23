@@ -6,7 +6,7 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(route.request().url());
     return url.origin === "http://127.0.0.1:8787" ? route.continue() : route.abort();
   });
-  const names = ["working-boat", "cargo-berth", "harbor-pedestrian",
+  const names = ["city-kit", "city-flora", "harbor-fleet", "city-working-boat", "cargo-berth", "harbor-pedestrian",
     "pedestrian-commuter", "pedestrian-hiker", "pedestrian-crew", "pedestrian-promenade", "pedestrian-child", "pedestrian-shopper",
     "vehicle-van", "vehicle-saloon", "vehicle-hatchback", "vehicle-pickup",
     "tower-glass", "tower-deco", "tower-concrete", "tower-ribbon", "tower-brick"];
@@ -113,23 +113,32 @@ test("compares all five tower designs while preserving daily HRV and replay time
 });
 
 test("water stays visible in World view and tower detail", async ({ page }) => {
-  const bounds = (await page.locator("canvas").boundingBox())!;
-  // This foreground area contains no buildings, boat, or viewport controls.
-  const clip = {
-    x: Math.floor(bounds.x + bounds.width * .76),
-    y: Math.floor(bounds.y + bounds.height * .91),
-    width: 45,
-    height: 16,
-  };
+  const canvas=page.locator("canvas");
   const time = page.getByRole("slider", { name: "Replay time", exact: true });
   const view = page.getByRole("combobox", { name: "Scene view" });
+  const rendered=()=>page.evaluate(()=>new Promise<void>(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done()))));
   for (const scene of ["world", "glass"]) {
     await view.selectOption(scene);
-    await time.fill("0");
-    const start = await page.screenshot({ clip });
-    await time.fill("600");
-    const later = await page.screenshot({ clip });
-    expect(later.equals(start), scene).toBe(false);
+    await time.fill("0");await rendered();
+    const start=await canvas.screenshot();
+    await time.fill("600");await rendered();
+    const later=await canvas.screenshot();
+    const movingWater=await page.evaluate(async([before,after])=>{
+      async function pixels(base64:string){
+        const img=new Image();img.src="data:image/png;base64,"+base64;await img.decode();
+        const frame=document.createElement("canvas");frame.width=img.width;frame.height=img.height;
+        const ctx=frame.getContext("2d")!;ctx.drawImage(img,0,0);
+        return ctx.getImageData(0,0,img.width,img.height).data;
+      }
+      const a=await pixels(before!),b=await pixels(after!);
+      let changed=0;
+      for(let i=0;i<a.length;i+=4){
+        if(a[i+2]!>a[i]!+45 && b[i+2]!>b[i]!+45 &&
+          Math.abs(a[i+2]!-b[i+2]!)+Math.abs(a[i+1]!-b[i+1]!)>7) changed++;
+      }
+      return changed;
+    },[start.toString("base64"),later.toString("base64")]);
+    expect(movingWater,scene).toBeGreaterThan(200);
   }
 });
 
@@ -304,16 +313,138 @@ test("returns from the square to the crossing with the same queue and walking po
   await expect(page.getByText("Synthetic daily HRV 12.80 ms · 2 buildings")).toBeVisible();
   await view.selectOption("walk");
   await time.fill("64608");
-  const canvas = page.locator("canvas");
-  const crossing = await canvas.screenshot();
-  for (const [value, title] of [["square", "Market square"], ["side", "Return lane"]]) {
+  const bounds=(await page.getByTestId("scene-canvas").boundingBox())!;
+  // Compare the junction, stop lines and sidewalks below the view controls.
+  const clip={x:bounds.x,y:bounds.y+bounds.height*.18,width:bounds.width,height:bounds.height*.67};
+  async function frame(){
+    await page.waitForFunction(width=>{
+      const canvas=document.querySelector<HTMLCanvasElement>(".scene-canvas canvas");
+      return canvas && Math.abs(canvas.getBoundingClientRect().width-width)<1;
+    },bounds.width);
+    await page.evaluate(()=>new Promise<void>(done=>requestAnimationFrame(()=>requestAnimationFrame(()=>done()))));
+    return page.screenshot({clip});
+  }
+  const crossing = await frame();
+  for (const [value, title] of [["square", "Civic plaza"], ["side", "Orchard Lane"]]) {
     await view.selectOption(value!);
     await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Inspect steps" })).toBeVisible();
-    expect((await canvas.screenshot()).equals(crossing)).toBe(false);
+    expect((await frame()).equals(crossing)).toBe(false);
   }
   await time.fill("66900");
   await view.selectOption("walk");
   await time.fill("64608");
-  expect((await canvas.screenshot()).equals(crossing)).toBe(true);
+  expect((await frame()).equals(crossing)).toBe(true);
+});
+
+test("the paused world ocean and splash schedule survive a round-trip seek", async ({ page }) => {
+  const view=page.getByRole("combobox",{name:"Scene view"});
+  const time=page.getByRole("slider",{name:"Replay time",exact:true});
+  const canvas=page.locator("canvas");
+  await view.selectOption("world");
+  await time.fill("1256");
+  const direct=await canvas.screenshot();
+  await page.waitForTimeout(1000);
+  expect((await canvas.screenshot()).equals(direct)).toBe(true);
+  await time.fill("3600");
+  expect((await canvas.screenshot()).equals(direct)).toBe(false);
+  await time.fill("1256");
+  expect((await canvas.screenshot()).equals(direct)).toBe(true);
+});
+
+test("each scene view renders the ocean without a browser error", async ({page})=>{
+  const errors:string[]=[];
+  page.on("pageerror",e=>errors.push(e.message));
+  page.on("console",m=>{if(m.type()==="error")errors.push(m.text());});
+  const view=page.getByRole("combobox",{name:"Scene view"});
+  const choices=await view.locator("option").evaluateAll(options=>options.map(option=>(option as HTMLOptionElement).value));
+  for(const choice of choices) {
+    await view.selectOption(choice);
+    await page.evaluate(()=>new Promise<void>(resolve=>{
+      requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()));
+    }));
+  }
+  expect(errors).toEqual([]);
+});
+
+test("the preview wake follows the stern and fades while the boat holds position", async ({page})=>{
+  await page.goto("/?wakePreview=1");
+  await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
+  const view=page.getByRole("combobox",{name:"Scene view"});
+  await view.selectOption("sleep");
+  const time=page.getByRole("slider",{name:"Replay time",exact:true});
+  const canvas=page.locator("canvas");
+  async function sternFoam(seconds:number) {
+    await time.fill(String(seconds));
+    await page.evaluate(()=>new Promise<void>(resolve=>{
+      requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()));
+    }));
+    const png=await canvas.screenshot();
+    return page.evaluate(async encoded=>{
+      const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
+      const image=await createImageBitmap(new Blob([bytes],{type:"image/png"}));
+      const sample=document.createElement("canvas");
+      sample.width=image.width;sample.height=image.height;
+      const ctx=sample.getContext("2d")!;
+      ctx.drawImage(image,0,0);image.close();
+      // This part of the follow view covers the curved trail aft of the stationary hull.
+      const area=ctx.getImageData(sample.width*.14,sample.height*.42,sample.width*.23,sample.height*.24);
+      let count=0;
+      for(let i=0;i<area.data.length;i+=4)
+        if(area.data[i]!>155 && area.data[i+1]!>165 && area.data[i+2]!>170)count++;
+      return count;
+    },png.toString("base64"));
+  }
+  const moving=await sternFoam(4800);
+  const stopped=await sternFoam(5400);
+  expect(moving).toBeGreaterThan(stopped+400);
+  expect(await sternFoam(4800)).toBe(moving);
+});
+
+test("restores the paused night skyline after a close view and a lighting change", async ({page}) => {
+  const view = page.getByRole("combobox", {name:"Scene view"});
+  const date = page.getByRole("combobox", {name:"Replay date"});
+  const time = page.getByRole("slider", {name:"Replay time", exact:true});
+  const canvas = page.locator("canvas");
+  async function frame() {
+    await page.evaluate(async () => {
+      for (let i=0; i<4; i++) await new Promise(requestAnimationFrame);
+    });
+    return canvas.screenshot();
+  }
+  await date.selectOption("2026-11-11");
+  await expect(page.getByText("Synthetic daily HRV 103.70 ms · 20 buildings")).toBeVisible();
+  await view.selectOption("world");
+  await time.fill("43200");
+  await page.getByRole("button", {name:"Night", exact:true}).click();
+  const overview = await frame();
+  await view.selectOption("walk");
+  expect((await frame()).equals(overview)).toBe(false);
+  await page.getByRole("button", {name:"Day", exact:true}).click();
+  await view.selectOption("world");
+  expect((await frame()).equals(overview)).toBe(false);
+  await page.getByRole("button", {name:"Night", exact:true}).click();
+  const restored = await frame();
+  const changedPixels = await page.evaluate(async images => {
+    const pixels = await Promise.all(images.map(async data => {
+      const image = new Image();
+      image.src = "data:image/png;base64," + data;
+      await image.decode();
+      const surface = document.createElement("canvas");
+      surface.width = image.width;
+      surface.height = image.height;
+      const ctx = surface.getContext("2d")!;
+      ctx.drawImage(image, 0, 0);
+      return ctx.getImageData(0, 0, surface.width, surface.height).data;
+    }));
+    const [before, after] = pixels as [Uint8ClampedArray, Uint8ClampedArray];
+    let changed = 0;
+    for (let i = 0; i < before.length; i += 4) {
+      if (before[i] !== after[i] || before[i+1] !== after[i+1] || before[i+2] !== after[i+2]) changed++;
+    }
+    return changed;
+  }, [overview.toString("base64"), restored.toString("base64")]);
+  // Rebuilding the draw batches can change a few edge pixels.
+  expect(changedPixels).toBeLessThanOrEqual(6);
+  await expect(time).toHaveValue("43200");
 });

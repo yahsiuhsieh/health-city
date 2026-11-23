@@ -75,6 +75,14 @@ _Avoid_: Actual elevation, a cardiovascular fitness score.
 **Heart rate variability (HRV)**: Variation in the time between heartbeats. The inspected Takeout includes daily sleep-average RMSSD and finer RMSSD samples, measured in milliseconds.
 _Avoid_: Heart rate, accumulated activity, an overall health score.
 
+**Street graph**: The network of street centerlines and junctions that defines city blocks, crossings, and routes.
+
+**Background building**: A permanent street building that gives the city scale. Its presence and height carry no health data.
+
+**Pocket park**: A small public garden that can occupy an HRV plot below its tower threshold.
+
+**Interim form**: The fixed non-tower appearance of an unoccupied HRV plot. Each plot has an older low-rise building, a pocket park, or a plaza when the daily count leaves it unoccupied.
+
 **HRV skyline**: Ordinary high-rises whose count represents the selected date's daily HRV summary. The count remains fixed during that day's replay.
 _Avoid_: Accumulated daytime HRV, buildings earned through exercise, an overall health grade.
 

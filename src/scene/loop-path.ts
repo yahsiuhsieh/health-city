@@ -2,17 +2,7 @@ export type Point = readonly [x: number, z: number];
 
 // Trim each corner with a quadratic bend and tabulate distance along the closed route.
 export function roundedRoute(corners: readonly Point[], radius: number | readonly number[]) {
-  const points: Point[] = [];
-  const ends: number[] = [];
-  let length = 0;
-  function append(x: number, z: number) {
-    const last = points.at(-1);
-    const segment = last ? Math.hypot(x - last[0], z - last[1]) : 0;
-    if (last && segment < .00001) return;
-    length += segment;
-    points.push([x, z]);
-    ends.push(length);
-  }
+  const cornersWithBends: Point[] = [];
   for (let i = 0; i < corners.length; i++) {
     const [x, z] = corners[i]!;
     const prev = corners[(i + corners.length - 1) % corners.length]!;
@@ -25,9 +15,25 @@ export function roundedRoute(corners: readonly Point[], radius: number | readonl
     for (let j = 0; j <= 16; j++) {
       const t = j / 16,
         u = 1 - t;
-      append(x + u * u * a[0]! + t * t * b[0]!, z + u * u * a[1]! + t * t * b[1]!);
+      cornersWithBends.push([x + u * u * a[0]! + t * t * b[0]!, z + u * u * a[1]! + t * t * b[1]!]);
     }
   }
+  return polylineRoute(cornersWithBends);
+}
+
+export function polylineRoute(vertices: readonly Point[]) {
+  const points: Point[] = [];
+  const ends: number[] = [];
+  let length = 0;
+  function append(x: number, z: number) {
+    const last = points.at(-1);
+    const segment = last ? Math.hypot(x - last[0], z - last[1]) : 0;
+    if (last && segment < .00001) return;
+    length += segment;
+    points.push([x, z]);
+    ends.push(length);
+  }
+  for (const point of vertices) append(...point);
   append(...points[0]!);
   function at(distance: number) {
     const remainder = distance % length;

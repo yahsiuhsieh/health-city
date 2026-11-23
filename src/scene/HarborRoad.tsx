@@ -1,10 +1,11 @@
+import { OverviewModel } from "./city/OverviewModel.tsx";
 import { useEffect, useMemo } from "react";
 import { useFrame, useLoader } from "@react-three/fiber";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { trafficAt } from "../core/representative-day.ts";
 import type { ReplayDay } from "../core/representative-day.ts";
 import type { Replay } from "../core/replay.ts";
-import { ROAD_Y, vehicleRoutes } from "./harbor-layout.ts";
+import { surfaceHeight } from "./city/terrain.ts";
 import type { DistrictMotion } from "./district-motion.ts";
 import { dailyModelOrder } from "./seeded-order.ts";
 import { createVehicleRig } from "./vehicle-rig.ts";
@@ -23,9 +24,9 @@ export function HarborRoad({ day, replay, motion, night, onReady }: {
     return order.map((gltf, index) => {
       const rig = createVehicleRig(gltf.scene);
       rig.model.visible = false;
-      return { ...rig, route: vehicleRoutes[index]! };
+      return { ...rig, route: motion.vehicleRoutes[index]! };
     });
-  }, [day.date, gltfs]);
+  }, [day.date, gltfs, motion]);
 
   useEffect(() => onReady(), [onReady]);
   useEffect(() => () => {
@@ -44,7 +45,7 @@ export function HarborRoad({ day, replay, motion, night, onReady }: {
       const roadPath = car.route;
       const metres = motion.driveDistance(index, seconds);
       const pose = roadPath.at(metres);
-      car.model.position.set(pose.x, ROAD_Y, pose.z);
+      car.model.position.set(pose.x, surfaceHeight(pose.x,pose.z)+.058, pose.z);
       car.model.rotation.y = pose.yaw;
       const sample = 1.45;
       const headingChange = roadPath.at(metres + sample).yaw - roadPath.at(metres - sample).yaw;
@@ -54,6 +55,6 @@ export function HarborRoad({ day, replay, motion, night, onReady }: {
   });
 
   return <group name="Harbor road">
-    {cars.map(({ model }) => <primitive key={model.uuid} object={model} dispose={null} />)}
+    {cars.map(({ model }) => <OverviewModel key={model.uuid} model={model} animated/>)}
   </group>;
 }

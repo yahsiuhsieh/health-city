@@ -8,10 +8,11 @@ A manual day replay for HRV, steps, and total energy is available behind a Worke
 ## Frontend foundation
 
 The local homepage now uses React, React Three Fiber, Three.js, and Vite.
-It loads one reusable working boat from `public/models/working-boat.glb`.
+It loads one reusable working boat from `public/models/city-working-boat.glb`.
 The red boat moors at a cargo berth with a shore crane, transit shed, forklift, and flatbed truck.
+A street graph connects Ridge Road, Market Avenue, the civic plaza, and the waterfront. Permanent mid-rise buildings share blocks with 30 fixed HRV plots.
 The adjacent skyline uses five tower models: Glass spire, Deco crown, Concrete terraces, Ribbon tower, and Brick crown.
-Use **Scene view** to open the skyline, harbor, harbor walk, harbor road, or an individual design. Drag to orbit. Right-drag to pan. Scroll to zoom.
+Use **Scene view** to open the skyline, harbor, Market crossing, Market Avenue, or an individual design. Drag to orbit. Right-drag to pan. Scroll to zoom.
 Selecting an asset opens its inspection card and pauses replay. The scene's inspection button opens the corresponding card with the keyboard.
 Playback becomes available after the scene models load.
 
@@ -31,13 +32,13 @@ Sleep stages, islands, and recorded voyages are pending.
 ### HRV skyline
 
 The selected date supplies a daily HRV RMSSD value. The count is the value divided by 5 ms and rounded down.
-The fixtures cover 20 towers at 103.7 ms, five at 27.4 ms, two at 12.8 ms, an empty skyline at 4.6 ms, and unavailable HRV.
+The fixtures cover 20 towers at 103.7 ms, five at 27.4 ms, two at 12.8 ms, zero towers at 4.6 ms, and unavailable HRV.
 A fixed district seed assigns the five designs to fixed plots. Each plot keeps its design across dates, page loads, and replay times.
 The daily count fills the fixed plots in order. The first five sites face neighborhood streets. Further plots extend inland.
 To see the larger district, select November 11 and click **World view**.
 An individual tower view shows its design for comparison. The inspection card shows the daily HRV and the full count.
 The current district can show 30 towers. Above this display limit, the app shows the number it rendered and the full count.
-Unavailable HRV uses neutral wireframes in the skyline. A derived count of zero leaves the plots empty.
+Each unoccupied plot keeps its older building, pocket park, or plaza. Select one to pause replay and inspect its HRV threshold. At zero towers all 30 interim forms appear. Unavailable HRV shows paved bases with wireframe tower envelopes.
 
 The Worker provides example data through `GET /api/replay/daily-hrv?date=YYYY-MM-DD`.
 The `GOOGLE_HRV_REPLAY_ENABLED` flag enables the **Google Health** source option. The flag starts disabled.
@@ -54,20 +55,19 @@ The browser initially retained November 20 when a date-fill action failed. That 
 
 ### Harbor walk
 
-Select **Harbor walk** in **Scene view**. On November 15, seek to 08:00 to see two figures or to 12:00 to see six.
+Select **Market crossing** in **Scene view**. On November 15, seek to 08:00 to see two figures or to 12:00 to see six.
 Select **Inspect steps** to pause and view the five-minute interval, its step total, and the figure count.
 The provisional scale uses one figure per 80 steps, rounded up, with a limit of six figures on this walk.
 The display keeps the exact step total when the figure limit applies.
 A zero step total and unavailable steps both leave the walk empty. The replay panel identifies each state.
-The waterfront route connects the dock, two crossings, the grocery, the square, and the return alley.
-A second route stays on the square and its footways. Both routes remain open on dates with empty tower plots.
+Four pedestrian routes follow the new sidewalks and marked crossings. Five vehicle loops serve the street network.
 The seven models include a child and a silver-haired shopper who carries a grocery bag. Each style has its own pace and stride.
 Walkers pause at the curb. Their feet follow the paving and both curb ramps.
-Select **Market square** for the inland view or **Return lane** for a view back toward the boat.
+Select **Civic plaza** for the inland view or **Orchard Lane** for a view back toward the boat.
 
 ### Harbor road
 
-Select **Harbor road** in **Scene view**. On November 15, seek to 00:00 for one vehicle, 12:00 for four, or 15:00 for the unavailable state.
+Select **Market Avenue** in **Scene view**. On November 15, seek to 00:00 for one vehicle, 12:00 for four, or 15:00 for the unavailable state.
 Select **Inspect traffic** to pause and view the interval, total energy, mean rate, and vehicle count.
 The preview divides the current five-minute total energy by the interval length to calculate a mean rate in kcal/min. Total energy includes basal metabolism.
 The provisional scale uses one vehicle per 1.2 kcal/min, rounded up, with a limit of four on this road.
@@ -75,7 +75,7 @@ An interval with zero energy or missing data leaves the road empty. The replay p
 Traffic runs in both directions on the coast road. The market route turns through the inland block.
 Drivers stop before the market crossing, yield to people crossing, and leave space behind the vehicle ahead.
 The scene samples route distances at fixed replay intervals and interpolates between samples. Seeking restores positions and wheel angles.
-On November 14, select **Harbor walk** and seek to 17:57 to see the shopper cross in front of a stopped vehicle.
+On November 14, select **Market crossing** and seek to 17:57 to see the shopper cross in front of a stopped vehicle.
 The front wheels steer into bends. All four wheels stop when the vehicle stops.
 In Night mode, the headlamps light the road ahead of each vehicle. Street lamps light the road and boardwalk.
 
@@ -110,8 +110,10 @@ The models share units and orientation. Separate window materials support night 
 Regenerate an asset after an authoring change:
 
 ```sh
-npm run asset:boat
+npm run asset:boat -- --city
 npm run asset:port
+npm run asset:city
+npm run asset:fleet
 npm run asset:building
 npm run asset:skyscrapers
 npm run asset:pedestrian
@@ -125,8 +127,7 @@ It does not establish the final modeling workflow or replace the accepted mixed 
 The user responded positively to the cargo boat and current water, then requested one representative building.
 The boat and water remain the visual baseline.
 The user liked the five different tower designs after comparison.
-Integrated visual acceptance and primary-Mac Chrome performance measurements remain pending.
-No preview server started during this implementation.
+The user accepted the full city at checkpoint B. See the [visual review](design/visual-studies/city-v2/checkpoint-b/README.md) and [performance results](design/visual-studies/city-v2/performance.md).
 
 ## Backend
 
@@ -401,14 +402,15 @@ These behavioral checks do not establish visual acceptance or a performance budg
 - `src/scene/BoatScene.tsx` composes the harbor assets, water, and lighting, and manages camera controls.
 - `src/scene/CargoBerth.tsx` poses the crane and mooring lines and controls the work lamps.
 - `src/scene/HarborWalk.tsx` positions and poses the walking figures from the replay clock and step totals.
-- `src/scene/harbor-layout.ts` defines shore coordinates, streets, crosswalks, plot locations, and routes.
-- `src/scene/HarborBlock.tsx` builds the pavement, shop fronts, square, and street furniture.
+- `src/scene/harbor-layout.ts` defines the landing and waterfront coordinates.
+- `src/scene/HarborBlock.tsx` builds the quays, piers, and breakwater.
+- `src/scene/city/city-plan.data.ts` defines the street graph and HRV plots. `CityGround.tsx` builds the streets and shoreline.
 - `src/scene/district-motion.ts` calculates distances along the routes and coordinates stops, crossings, and queues.
 - `src/scene/HarborRoad.tsx` positions vehicles and turns their wheels. The energy rate determines the vehicle count.
-- `src/scene/WaterSurface.tsx` renders blue-turquoise water, fine waves with restrained bending, and boat and pier reflections.
+- `src/scene/WaterSurface.tsx` renders the ocean. A refraction pre-pass records scene color and depth before the flat water surface draws. Depth controls the transition from visible sand to cobalt water. Shore wash, caustics, boat wakes, and fish splashes follow replay time.
 - `scripts/build-boat.mjs` supplies the provisional editable model source.
 - `scripts/build-building.mjs` supplies the editable building source and combines static geometry by material.
-- `public/models/working-boat.glb` supplies the browser delivery asset.
+- `public/models/city-working-boat.glb` supplies the browser delivery asset.
 - `public/models/cargo-berth.glb` supplies the cargo equipment and transit shed.
 - `public/_headers` defines security headers for static resources.
 - `vite.config.ts` separates browser entries from the Worker build through the Cloudflare plugin.

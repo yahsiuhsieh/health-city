@@ -1,3 +1,4 @@
+import { OverviewModel } from "./city/OverviewModel.tsx";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useLoader } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
@@ -7,15 +8,17 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { boatPose } from "../core/representative-day.ts";
 import type { Replay } from "../core/replay.ts";
 import { voyage } from "./sleep-voyage.ts";
+import { WORK_BOAT_BERTH } from "./city/harbor-plan.ts";
 import { port } from "./port-layout.ts";
-import { DOCK } from "./harbor-layout.ts";
+import { WORK_FLOAT as DOCK } from "./harbor-layout.ts";
 import { cargoPose } from "./port-motion.ts";
 
+const horizontal=new Vector3(1,0,0);
 const up = new Vector3(0, 1, 0);
 const ropeSegments = 6;
 const fastenings = [
-  { onBoat: [-3.46, 1.20, .94] as const, bollardZ: -4.7 },
-  { onBoat: [3.70, 1.26, .79] as const, bollardZ: 4.7 },
+  { onBoat: [-6.23, 1.70, 1.57] as const, bollardX: -7.3 },
+  { onBoat: [6.66, 1.79, 1.32] as const, bollardX: 7.3 },
 ];
 
 export function MooringLines({ replay,offset }: { replay: Replay;offset:number|null }) {
@@ -33,11 +36,11 @@ export function MooringLines({ replay,offset }: { replay: Replay;offset:number|n
     const pose = boatPose(replay.read().seconds);
     const { ship, segment, from, to, start, end, direction } = rig;
     ship.position.set(port.boatX, pose.y + port.boatTrim, port.boatZ);
-    ship.rotation.set(pose.pitch, -Math.PI / 2, pose.roll);
+    ship.rotation.set(pose.pitch, WORK_BOAT_BERTH.yaw, pose.roll);
     ship.updateMatrix();
     for (const [i, fastening] of fastenings.entries()) {
       from.fromArray(fastening.onBoat).applyMatrix4(ship.matrix);
-      to.set(DOCK.x+.73, DOCK.deck+.24, DOCK.z+fastening.bollardZ);
+      to.set(DOCK.x+fastening.bollardX, DOCK.deck+.24, DOCK.z-.73);
       start.copy(from);
       for (let k = 1; k <= ropeSegments; k++) {
         const t = k / ropeSegments;
@@ -53,11 +56,11 @@ export function MooringLines({ replay,offset }: { replay: Replay;offset:number|n
       }
     }
     if (gangway.current) {
-      from.set(DOCK.x-.48,DOCK.deck+.055,port.boatZ+.6);
-      to.set(.6,1.13,1.32).applyMatrix4(ship.matrix);
+      from.set(port.boatX+.6,DOCK.deck+.055,DOCK.z-.48);
+      to.set(.6,1.60,2.20).applyMatrix4(ship.matrix);
       direction.subVectors(to,from);
       gangway.current.position.lerpVectors(from,to,.5);
-      gangway.current.rotation.z = Math.atan2(direction.y,direction.x);
+      gangway.current.quaternion.setFromUnitVectors(horizontal,direction.clone().normalize());
       gangway.current.scale.x = direction.length();
     }
     ropes.current.instanceMatrix.needsUpdate = true;
@@ -106,7 +109,7 @@ export function CargoBerth({ replay, night, onReady, onSelect }: {
   }
   return <group name="General cargo berth" position={[port.craneX, port.quayY, port.craneZ]}
     onPointerDown={event => { down.current = [event.clientX, event.clientY]; }} onClick={inspect}>
-    <primitive object={rig.scene} dispose={null}/>
+    <OverviewModel model={rig.scene} animated/>
 
     {night && <>
       <primitive object={rig.target}/>

@@ -5,6 +5,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 
 // Editable source for the representative cargo boat. One unit equals one metre.
 // The bow points along positive X. The browser loads the exported GLB.
+const cityBerth = process.argv.includes("--city");
 const boat = new THREE.Group();
 boat.name = "HealthCity working cargo boat";
 const colors = {
@@ -38,11 +39,11 @@ function mesh(shape, material, at, name = "", parent = boat) {
 function box(size, at, material, radius = .035, name = "", parent = boat) {
   const corner = Math.min(radius, Math.min(...size) * .45);
   const key = "box:" + size.join(",") + ":" + corner;
-  return mesh(geometry(key, () => new RoundedBoxGeometry(...size, 2, corner)), material, at, name, parent);
+  return mesh(geometry(key, () => cityBerth ? new THREE.BoxGeometry(...size) : new RoundedBoxGeometry(...size, 2, corner)), material, at, name, parent);
 }
 function cylinder(radius, height, at, material, name = "", parent = boat) {
   const key = "cylinder:" + radius + ":" + height;
-  return mesh(geometry(key, () => new THREE.CylinderGeometry(radius, radius, height, 16)), material, at, name, parent);
+  return mesh(geometry(key, () => new THREE.CylinderGeometry(radius, radius, height, cityBerth ? 10 : 16)), material, at, name, parent);
 }
 function beam(a, b, radius, material, parent = boat) {
   const from = new THREE.Vector3(...a);
@@ -53,11 +54,11 @@ function beam(a, b, radius, material, parent = boat) {
 }
 function pathTube(points, radius, material, closed = false, parent = boat) {
   const curve = new THREE.CatmullRomCurve3(points.map(point => new THREE.Vector3(...point)), closed, "centripetal");
-  return mesh(new THREE.TubeGeometry(curve, Math.max(12, points.length * 3), radius, 6, closed), material, [0, 0, 0], "", parent);
+  return mesh(new THREE.TubeGeometry(curve, Math.max(12, points.length * (cityBerth ? 1 : 3)), radius, cityBerth ? 5 : 6, closed), material, [0, 0, 0], "", parent);
 }
 function ring(radius, thickness, at, material, parent = boat) {
   const key = "ring:" + radius + ":" + thickness;
-  return mesh(geometry(key, () => new THREE.TorusGeometry(radius, thickness, 8, 20)), material, at, "", parent);
+  return mesh(geometry(key, () => new THREE.TorusGeometry(radius, thickness, cityBerth ? 5 : 8, cityBerth ? 12 : 20)), material, at, "", parent);
 }
 
 const controls = [[4.7, 0], [4.25, .75], [3.1, 1.24], [1.6, 1.43], [-2.75, 1.43],
@@ -71,7 +72,9 @@ const sheer = x => 1.14 + Math.pow(Math.max(0, x - 1.5) / 3.2, 1.7) * .23
 // Rounded waterline and a raised bow preserve the cargo vessel's silhouette.
 const vertices = [], indices = [], plateColors = [];
 const rings = [
+  ...(cityBerth ? [{ scale: .10, y: -.94, color: "#432e2c" }, { scale: .58, y: -.78, color: "#623531" }] : []),
   { scale: .73, y: -.65, color: "#624138" },
+  ...(cityBerth ? [{ scale: .93, y: -.15, color: "#503532" }] : []),
   { scale: .94, y: .03, color: "#803e32" },
   { scale: .985, y: .62, color: "#a24a37" },
   { scale: 1, y: null, color: "#ad5540" },
@@ -158,7 +161,7 @@ for (const z of [-.5, .5]) {
   box([.03, .63, .47], [-3.015, 3.28, z], "glass", .04, "cabin-window");
 }
 
-box([.94,.13,1.38], [-.68,2.575,-.39], "deck", .04, "bridge-wing");
+const bridgeWing = box([.94,.13,1.38], [-.68,2.575,-.39], "deck", .04, "bridge-wing");
 beam([-.25,2.64,-1.06],[-.25,3.3,-1.06],.03,"rail");
 beam([-.25,3.3,-1.06],[-1.05,3.3,-1.06],.032,"rail");
 
@@ -277,6 +280,58 @@ for (const radius of [.18, .135, .09]) {
   ring(radius, .018, [3.5, 1.13, .55], "rope").rotation.x = Math.PI / 2;
 }
 
+if (cityBerth) {
+  // Preserve the reviewed deck arrangement on the longer 16 m hull.
+  boat.scale.set(1.80,1.42,1.67);
+  const sole = new THREE.Shape();
+  outline.forEach((p,i) => i ? sole.lineTo(p.x*.10,-p.z*.10) : sole.moveTo(p.x*.10,-p.z*.10));
+  const bottom=new THREE.ShapeGeometry(sole);
+  bottom.rotateX(Math.PI/2);
+  mesh(bottom,"rail",[0,-.94,0],"hull-bottom");
+  box([5.75,.26,.14],[-.25,-.94,0],"rail",.02,"keel");
+  box([.40,.58,.075],[-3.90,-.69,0],"rail",.03,"rudder");
+  const prop=new THREE.Group();prop.name="propeller";prop.position.set(-3.68,-.73,0);boat.add(prop);
+  for(let i=0;i<3;i++){
+    const blade=box([.07,.24,.11],[0,.13,0],"brass",.02,"blade");
+    const pivot=new THREE.Group();pivot.rotation.x=i*2*Math.PI/3;pivot.add(blade);prop.add(pivot);
+  }
+  const windows=boat.children.filter(child=>child.name==="cabin-window");
+  for(const [i,window] of windows.entries()){
+    window.geometry.computeBoundingBox();
+    const dims=window.geometry.boundingBox.getSize(new THREE.Vector3());
+    const sideways=dims.x>dims.z;
+    const [x,y,z]=window.position.toArray();
+    box(sideways?[dims.x,.07,.09]:[.09,.07,dims.z],
+      [x,y+dims.y/2+.025,z],"frame",.01,"cabin-shutter-"+i);
+  }
+  const anchor=new THREE.Group();anchor.name="bow-anchor";anchor.position.set(4.05,.72,.95);boat.add(anchor);
+  beam([0,.18,0],[0,-.36,0],.043,"rail",anchor);
+  pathTube([[-.22,-.19,0],[-.15,-.35,0],[0,-.40,0],[.15,-.35,0],[.22,-.19,0]],.045,"rail",false,anchor);
+  mesh(new THREE.SphereGeometry(.11,10,6),"rubber",[-2.06,5.12,.23],"anchor-ball");
+  cylinder(.065,.14,[-2.06,5.60,.10],"cream","anchor-light");
+  const socket = new THREE.Object3D();
+  socket.name = "captain-socket";
+  bridgeWing.geometry.computeBoundingBox();
+  socket.position.y = bridgeWing.geometry.boundingBox.max.y;
+  socket.rotation.y = Math.PI / 2;
+  bridgeWing.add(socket);
+  // Bake contact shading into the reusable geometry, including the cabin recesses.
+  const visited=new Set();
+  boat.traverse(node=>{
+    if(!node.isMesh || visited.has(node.geometry))return;
+    visited.add(node.geometry);
+    const g=node.geometry,p=g.getAttribute("position"),n=g.getAttribute("normal");
+    if(!n || g.hasAttribute("color"))return;
+    g.computeBoundingBox();const lower=g.boundingBox.min.y,span=Math.max(.01,g.boundingBox.max.y-lower);
+    const rgb=[];
+    for(let i=0;i<p.count;i++){
+      const ao=(.84+.16*(p.getY(i)-lower)/span)*(n.getY(i)<-.4?.8:1);
+      rgb.push(ao,ao,ao);
+    }
+    g.setAttribute("color",new THREE.Float32BufferAttribute(rgb,3));
+  });
+  boat.traverse(node=>{if(node.isMesh)node.material.vertexColors=true;});
+}
 globalThis.FileReader = class {
   readAsArrayBuffer(blob) {
     blob.arrayBuffer().then(result => { this.result = result; this.onloadend?.(); });
@@ -284,7 +339,7 @@ globalThis.FileReader = class {
 };
 boat.updateMatrixWorld(true);
 const glb = await new GLTFExporter().parseAsync(boat, { binary: true });
-const target = new URL("../public/models/working-boat.glb", import.meta.url);
+const target = new URL(cityBerth ? "../public/models/city-working-boat.glb" : "../public/models/working-boat.glb", import.meta.url);
 await mkdir(new URL(".", target), { recursive: true });
 await writeFile(target, new Uint8Array(glb));
-console.log("Exported working-boat.glb (" + glb.byteLength + " bytes).");
+console.log("Exported", target.pathname, glb.byteLength, "bytes");

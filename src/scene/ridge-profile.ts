@@ -1,3 +1,5 @@
+import {ridgeFootX} from "./city/ridge-foot.ts";
+
 export const ridgeLength=146;
 export function elevation(bpm:number) {
   return bpm===0 ? 8 : 8+48/(1+(100/bpm)**2);
@@ -19,8 +21,8 @@ export function ridgeProfile(means:(number|null)[]) {
     const t=Math.min(1,Math.abs(offset)),s=t*t*(3-2*t);
     return elevation(v)+(elevation(other)-elevation(v))*s;
   }
-  const x=(u:number)=>-231+3*Math.sin(6*u)+2*Math.cos(13*u);
   const z=(u:number)=>(.5-u)*ridgeLength;
+  const x=(u:number)=>ridgeFootX(z(u))-19+1.3*Math.sin(6*u)+.7*Math.cos(13*u);
   // Limit vertical changes on the railway without smoothing the data crest.
   const shelves=means.map((v,i)=>{
     if(v===null)return 0;

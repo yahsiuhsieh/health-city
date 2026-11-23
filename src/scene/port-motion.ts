@@ -1,3 +1,4 @@
+import {swellAmplitude} from "./city/harbor-plan.ts";
 
 import { freighter, port } from "./port-layout.ts";
 
@@ -11,7 +12,7 @@ export function cargoPose(seconds: number) {
   const hour = ((seconds % 3600) + 3600) % 3600;
   const t = Math.min(hour, 3600 - hour) / 1800;
   const phase = seconds*.002 + freighter.z;
-  const hatch = freighter.deckHeight - port.quayY + .055*Math.sin(phase)
+  const hatch = freighter.deckHeight - port.quayY + swellAmplitude(freighter.length)*Math.sin(phase)
     + (port.craneZ-freighter.z)*Math.sin(.006*Math.sin(phase*.83));
   const lift = 5.55;
   if (t < .25) {
