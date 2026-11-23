@@ -232,9 +232,9 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 - Use one heart-rate-to-elevation mapping across dates, relative to a fixed baseline. Equal means produce equal heights.
 - Do not normalize each date's minimum and maximum independently. Exact baseline, vertical scale, and exceptional-value handling remain open.
 - Preserve source chronology and meaningful events. Rounded geometry must not introduce invented peaks.
-- Persist five-minute means with their calculated precision, interval boundaries, and necessary coverage and source information.
+- Persist five-minute means with their API precision, interval boundaries, and necessary coverage and source information.
 - Inspection shows the interval mean and data status, not an original-sample heart-rate curve.
-- Use original heart-rate samples for aggregation and necessary checks. Do not retain them permanently by default.
+- Use Google Health five-minute rollups for average heart rate. Prefer API-provided averages for other metrics when available.
 - Use a mountain sightseeing train near the upper ridge to indicate replay time. Avoid roller-coaster-like motion through sharp changes.
 - Use labeled railway tunnels for missing heart-rate intervals.
 - The train disappears while replay time continues. It returns when records resume.
@@ -442,7 +442,7 @@ The user approved the consolidated plan on November 7, 2026, including:
 
 The `grill-with-docs` planning interview is formally closed. Product policies and acceptance criteria have approval.
 
-The user also closed the technical architecture interview on November 8, 2026. The [architecture decisions](adr/) define the accepted technical baseline. Implementation proceeds through small shared-learning milestones and the validation gates above.
+The user also closed the technical architecture interview on November 8, 2026. The [architecture decisions](adr/) define the accepted technical baseline. Implementation follows the validation gates above.
 
 API access and values, final art quality, and numerical and performance budgets remain unverified. The gates above define required evidence. Planning approval does not establish successful checks.
 

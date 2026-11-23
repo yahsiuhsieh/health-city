@@ -12,8 +12,6 @@ HealthCity combines an interactive 3D world with a timeline, record cards, and s
 - TypeScript with native Three.js and browser DOM controls gives direct control over scene updates and interface synchronization.
 - React with native Three.js separates interface components from a manually managed scene, but requires an explicit lifecycle bridge.
 
-The selected approach adds React concepts to the learning requirements. The user accepts this trade-off to reduce manual management. Learning still covers HTML, CSS, JavaScript behavior, and Three.js concepts.
-
 ## Consequences
 
 - Use R3F components for scene composition where appropriate.

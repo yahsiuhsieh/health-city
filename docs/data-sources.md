@@ -92,7 +92,7 @@ These observations do not approve new features or extra persistence. Recheck sou
 | --- | --- | --- |
 | Energy traffic | `total-calories` | Derived total energy includes basal metabolism. Access uses `rollUp` and `dailyRollUp`, not raw `list`. Storage resolution is one minute. A five-minute rollup is compatible with the requested replay interval. |
 | Pedestrians | `steps` | Intervals have minute resolution. Reconcile sources before aggregation. |
-| Heart-rate mountains | `heart-rate` | Documented storage resolution is one second. Actual recording cadence and coverage may vary. Five-minute means can be derived. |
+| Heart-rate mountains | `heart-rate` | Five-minute `rollUp` returns `heartRate.beatsPerMinuteAvg`. Preserve missing intervals. |
 | Daily high-rise count | `daily-heart-rate-variability` | Daily RMSSD summary. Preserve API date semantics. Reconcile sleep-day assignment with Takeout and the app. |
 | RHR dam and reservoir | `daily-resting-heart-rate` | Daily date and beats-per-minute summary. Reconcile calculation methods before claiming agreement with the app. |
 | Sleep boat and islands | `sleep` | Complete sessions contain stage intervals and separate short awakenings. Preserve sessions across midnight and naps. |
@@ -216,7 +216,8 @@ No weather data API requests occurred.
 
 The user selected a private website on Cloudflare Workers with Static Assets and D1. The selected stack excludes Pages.
 Testing must remain free. The user confirms Google Health API access is free.
-The authentication Worker and dedicated D1 database are deployed. The frontend and automatic synchronization are not implemented.
+The authentication Worker and dedicated D1 database are deployed.
+The local frontend defaults to synthetic data. The manual HRV replay route uses the existing owner session. Automatic synchronization is pending.
 
 The following limits reflect documentation checks on November 7, 2026:
 
@@ -321,8 +322,9 @@ One selected date and IANA time zone define the check. Temporal computes UTC bou
 Daily RHR and HRV preserve their source date. Intraday streams use the selected day's physical interval.
 
 The workflow checks eight streams: daily RHR, daily HRV, total calories, steps, heart rate, sleep, exercise, and heart-rate-zone intervals.
-Total calories uses a read-only five-minute `rollUp` POST. Other streams use `reconcile` reads.
-Heart-rate means use only returned samples. Counts and first/last timestamps accompany each mean without an inferred continuous-coverage percentage.
+Total calories and heart rate use read-only five-minute `rollUp` POST requests. Other streams use `reconcile` reads.
+Heart-rate means come directly from `heartRate.beatsPerMinuteAvg`. Interval boundaries must match the selected day and five-minute windows.
+API-provided averages are preferred for all metrics that expose them. Total-energy rate converts API kcal totals to kcal/min.
 Missing averages and missing buckets remain unavailable. Explicit zero values remain zero.
 Sleep stage intervals and short awakenings remain separate. Exercise retains completion time, active duration, events, and optional zone durations.
 These fields support essential inspection of accepted features. No health data or new operational fields enter D1.
@@ -333,6 +335,29 @@ Individual requests have ten-second timeouts. The stream sequence stops after 45
 The Worker stops remaining streams after quota, network, authorization-expiry, or sequence-timeout failures. No automatic retries occur.
 Independent stream failures do not discard successful results. Results identify partial, failed, and skipped streams explicitly.
 Session validity is checked before each stream and before the response.
+
+### Recorded day replay
+
+The browser requests one ended date and an IANA time zone through a same-origin POST to `/api/replay/day`.
+The Worker requires an active owner session and the `GOOGLE_HRV_REPLAY_ENABLED` flag. The flag starts disabled.
+The Worker refreshes Google access once per load. It checks session validity before each page and before returning the result.
+The example GET and the owner-only HRV POST remain available at `/api/replay/daily-hrv`.
+
+- HRV uses the source civil date and returns the average RMSSD in milliseconds. The read allows up to three pages.
+- Total energy uses five-minute `rollUp` buckets from local midnight. Each returned interval must match its replay bucket exactly.
+- Steps use reconciled intervals. The Worker sums the non-overlapping records contained in each five-minute bucket.
+- A step interval that crosses a bucket boundary makes each affected bucket unavailable. The Worker does not estimate a split.
+- Activity reads allow up to five pages per stream. An incomplete sequence or invalid data marks that stream failed.
+- A completed stream preserves explicit zeros and leaves omitted buckets unavailable. Failure in one stream leaves successful streams usable.
+
+The Worker returns normalized values with no health history writes to D1.
+Synthetic transport tests cover the replay contract.
+An authorized production check on November 21, 2026 loaded November 18 in America/Chicago.
+All three streams returned successfully. Their readers require completed pagination before they return values.
+The date card and noon inspection cards confirmed the expected mappings. Playback and backward seeking worked.
+An earlier date-fill action left the default November 20 selected and caused an unintended read.
+The operator corrected the field and confirmed November 18 before the subsequent load.
+Source coverage across other dates and the production CPU budget still require verification.
 
 Sleep queries include sessions ending on the selected or following date. Exercise filters use civil starts on the previous or selected date.
 Complete intersecting sessions remain intact. Sessions longer than these bounded windows can escape retrieval.
@@ -398,13 +423,13 @@ Heart-rate files split by UTC date. The November 1 file alone cannot establish t
 
 The existing partial response contains only the final part of the day. It cannot establish full-day means or missing intervals.
 The first returned five-minute bucket can also contain only part of its samples because pagination stops inside that bucket.
-Resolve bounded heart-rate pagination before treating these means as complete replay inputs. Do not infer a source gap from unrequested pages.
+These findings concern the retired raw-sample reader. The replacement uses five-minute heart-rate rollups.
 The continuation implementation supports all eight streams and retains their original filters and page sizes.
 Each explicit batch reads at most ten additional pages across the pending streams.
 Each continuation request requires a valid owner session, the same origin, the selected date and zone, and an opaque page cursor.
 It refreshes access and reads one page: up to 25 daily summaries or sessions, or 1,000 other records.
 The Worker checks session validity again before the response.
-Only normalized inspection data and the next cursor reach the browser. Heart-rate pages combine sample sums and counts across non-overlapping spans.
+Only normalized inspection data and the next cursor reach the browser. Heart-rate pages append complete rollup intervals and reject duplicates.
 Other streams retain their normalized rows and separate methods. Session labels remain unique across continuation pages.
 An empty next cursor establishes pagination completion. Quota, network, expiry, or malformed-response failures stop the batch without automatic retry.
 Progress remains in the current browser page. No D1 fields or migrations are added. Deployment and unauthenticated route checks passed on November 14, 2026. Live continuation verification remains pending.
@@ -412,3 +437,24 @@ Optional export comparisons found matching daily HRV and sleep-session bounds an
 Calories and reconciled steps differed from simple export sums. These differences do not override the authoritative API values.
 Their exact causes remain unverified. Do not describe them as confirmed rounding or a known source-priority algorithm.
 No additional manual app comparison is required. No health record was added to D1 during this inspection.
+
+
+### Five-minute heart-rate rollup validation
+
+Heart rate and total energy share the rollup request builder. Each requests 300-second windows and at most 1,000 intervals per page.
+Heart-rate tables retain API averages and returned interval boundaries. Omitted intervals remain absent. An omitted average displays as unavailable.
+Repeated intervals stop the read or continuation merge. The previous browser result remains available after a failed merge.
+Shared pagination still requires an empty next cursor before it reports completion.
+Synthetic tests cover API values, missing values, malformed boundaries, duplicate intervals, continuation, and DST day lengths.
+
+
+The authorized production check for November 18, 2026 used America/Chicago.
+The query covered `2026-11-18T06:00:00Z` through `2026-11-19T06:00:00Z`, with an exclusive end.
+All eight streams completed. Heart rate returned 284 intervals, each with an API-provided average.
+Four of the expected 288 intervals were omitted. No returned interval omitted its average.
+The initial bounded read exhausted heart-rate pagination. The manual continuation button was unnecessary.
+This check does not measure how many HTTP pages the initial reader consumed or establish continuous sensor coverage.
+
+### Heart-rate replay snapshots
+
+One row stores the last complete Google Health read for an account, local date, and time zone. The account key links the snapshot to connection removal. The UTC start and end define the interval grid. Each JSON array position represents 300 seconds from the start. A number preserves the API mean in bpm. A null marks an unavailable mean. The source is Google Health heart-rate rollup for every row. The synchronization timestamp records the successful read time. The request timestamp prevents older concurrent reads from replacing newer reads.

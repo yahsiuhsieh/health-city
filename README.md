@@ -2,7 +2,131 @@
 
 HealthCity turns Google Health records into an explorable 3D daily life record.
 The accepted architecture uses a browser-rendered React/R3F application and a Cloudflare Worker with Static Assets and D1.
-The frontend and data pipeline are not implemented yet.
+The frontend contains a harbor with pedestrians, road traffic, and an HRV skyline. The default scene uses synthetic data.
+A manual day replay for HRV, steps, and total energy is available behind a Worker flag. Automatic synchronization and stored replay history are pending.
+
+## Frontend foundation
+
+The local homepage now uses React, React Three Fiber, Three.js, and Vite.
+It loads one reusable working boat from `public/models/working-boat.glb`.
+The red boat moors at a cargo berth with a shore crane, transit shed, forklift, and flatbed truck.
+The adjacent skyline uses five tower models: Glass spire, Deco crown, Concrete terraces, Ribbon tower, and Brick crown.
+Use **Scene view** to open the skyline, harbor, harbor walk, harbor road, or an individual design. Drag to orbit. Right-drag to pan. Scroll to zoom.
+Selecting an asset opens its inspection card and pauses replay. The scene's inspection button opens the corresponding card with the keyboard.
+Playback becomes available after the scene models load.
+
+Select one of five synthetic dates in `America/Chicago`. The default date is November 15, 2026.
+Each date starts paused at midnight. The camera and replay speed carry across dates. The initial speed is 240×.
+Boat, crane, water, pedestrian, and traffic motion use the same replay controller.
+Seeking restores motion directly from the selected replay time.
+Camera controls remain available while replay is paused.
+Hidden pages pause replay. Returning to the page requires an explicit Play action.
+Frame intervals above one second also pause replay without advancing through the interruption.
+This threshold is provisional. Primary-desktop measurements must calibrate it.
+
+Day and Night are explicit material-review controls. They do not represent historical daylight or weather.
+The Account link opens the authentication status page. The default scene uses the Worker's public synthetic HRV response.
+Sleep stages, islands, and recorded voyages are pending.
+
+### HRV skyline
+
+The selected date supplies a daily HRV RMSSD value. The count is the value divided by 5 ms and rounded down.
+The fixtures cover 20 towers at 103.7 ms, five at 27.4 ms, two at 12.8 ms, an empty skyline at 4.6 ms, and unavailable HRV.
+A fixed district seed assigns the five designs to fixed plots. Each plot keeps its design across dates, page loads, and replay times.
+The daily count fills the fixed plots in order. The first five sites face neighborhood streets. Further plots extend inland.
+To see the larger district, select November 11 and click **World view**.
+An individual tower view shows its design for comparison. The inspection card shows the daily HRV and the full count.
+The current district can show 30 towers. Above this display limit, the app shows the number it rendered and the full count.
+Unavailable HRV uses neutral wireframes in the skyline. A derived count of zero leaves the plots empty.
+
+The Worker provides example data through `GET /api/replay/daily-hrv?date=YYYY-MM-DD`.
+The `GOOGLE_HRV_REPLAY_ENABLED` flag enables the **Google Health** source option. The flag starts disabled.
+Select **Google Health**, choose one ended date, and click **Load day**.
+The same-origin POST to `/api/replay/day` requires an active owner session.
+It reads daily HRV, reconciled steps, and five-minute total energy for the selected date.
+Each successful stream can drive replay if another stream fails. The inspection cards show values for the current interval.
+The Worker sends normalized records to the browser without storing them in D1.
+Synthetic upstream responses cover this flow in tests.
+The authorized production check on November 21, 2026 loaded November 18 in America/Chicago.
+All three streams returned successfully. Inspection cards confirmed HRV, steps, and total-energy mappings.
+Playback advanced across intervals. Seeking restored the inspected noon values.
+The browser initially retained November 20 when a date-fill action failed. That unintended read preceded the confirmed November 18 check.
+
+### Harbor walk
+
+Select **Harbor walk** in **Scene view**. On November 15, seek to 08:00 to see two figures or to 12:00 to see six.
+Select **Inspect steps** to pause and view the five-minute interval, its step total, and the figure count.
+The provisional scale uses one figure per 80 steps, rounded up, with a limit of six figures on this walk.
+The display keeps the exact step total when the figure limit applies.
+A zero step total and unavailable steps both leave the walk empty. The replay panel identifies each state.
+The waterfront route connects the dock, two crossings, the grocery, the square, and the return alley.
+A second route stays on the square and its footways. Both routes remain open on dates with empty tower plots.
+The seven models include a child and a silver-haired shopper who carries a grocery bag. Each style has its own pace and stride.
+Walkers pause at the curb. Their feet follow the paving and both curb ramps.
+Select **Market square** for the inland view or **Return lane** for a view back toward the boat.
+
+### Harbor road
+
+Select **Harbor road** in **Scene view**. On November 15, seek to 00:00 for one vehicle, 12:00 for four, or 15:00 for the unavailable state.
+Select **Inspect traffic** to pause and view the interval, total energy, mean rate, and vehicle count.
+The preview divides the current five-minute total energy by the interval length to calculate a mean rate in kcal/min. Total energy includes basal metabolism.
+The provisional scale uses one vehicle per 1.2 kcal/min, rounded up, with a limit of four on this road.
+An interval with zero energy or missing data leaves the road empty. The replay panel identifies each state.
+Traffic runs in both directions on the coast road. The market route turns through the inland block.
+Drivers stop before the market crossing, yield to people crossing, and leave space behind the vehicle ahead.
+The scene samples route distances at fixed replay intervals and interpolates between samples. Seeking restores positions and wheel angles.
+On November 14, select **Harbor walk** and seek to 17:57 to see the shopper cross in front of a stopped vehicle.
+The front wheels steer into bends. All four wheels stop when the vehicle stops.
+In Night mode, the headlamps light the road ahead of each vehicle. Street lamps light the road and boardwalk.
+
+The road has four vehicle styles: delivery van, classic saloon, hatchback, and pickup.
+The selected date seeds a separate style order for the road and walk. Each active slot keeps its style during that day's replay.
+The step total and energy rate determine how many slots appear. The seed controls their style order.
+
+### Asset sources and review
+
+`scripts/build-boat.mjs` is the editable source for the provisional boat.
+It uses project-local Three.js geometry tools and exports a self-contained GLB.
+One model unit represents one metre. The bow points along positive X, and Y points upward.
+Named window and lamp meshes support runtime night materials.
+The model has a red-brown hull, an aft house, an open cargo deck, hatch covers, a fixed derrick, and dark rails.
+Anchors, rope coils, a banded stack, framed windows, and life rings provide working-vessel detail.
+
+Select **Cargo berth** to inspect the loading area. At 12:00, the slung pallet rests on the forward hatch.
+At 12:10, the crane turns toward shore. At 12:30, the pallet rests on the flatbed. The return pass loads the boat.
+The crane follows replay time. The parked forklift and flatbed are fixed berth equipment. Neither contributes to the calorie-driven traffic count.
+A separate gate connects the cargo apron to the return street. The public walk passes outside the yard fence.
+
+`scripts/build-cargo-berth.mjs` generates `public/models/cargo-berth.glb` from project-local geometry.
+The turntable, hoist lines, and slung pallet have separate pivots. Work lamps share one material.
+The earlier harbor house model and its editable source remain available as a design study.
+
+`scripts/build-skyscrapers.mjs` exports the five tower GLBs in `public/models/`.
+The models share units and orientation. Separate window materials support night lighting.
+
+`scripts/build-pedestrian.mjs` exports seven pedestrian GLBs with named limb joints for the walking pose.
+`scripts/build-vehicles.mjs` exports four vehicle GLBs with named wheel pivots and lamp materials.
+
+Regenerate an asset after an authoring change:
+
+```sh
+npm run asset:boat
+npm run asset:port
+npm run asset:building
+npm run asset:skyscrapers
+npm run asset:pedestrian
+npm run asset:vehicles
+```
+
+The browser loads the exported asset. It does not execute the authoring script.
+This step checks the GLB delivery boundary without installing Blender.
+It does not establish the final modeling workflow or replace the accepted mixed asset strategy.
+
+The user responded positively to the cargo boat and current water, then requested one representative building.
+The boat and water remain the visual baseline.
+The user liked the five different tower designs after comparison.
+Integrated visual acceptance and primary-Mac Chrome performance measurements remain pending.
+No preview server started during this implementation.
 
 ## Backend
 
@@ -12,7 +136,8 @@ The Cloudflare dashboard listed the Workers Free plan on November 9, 2026.
 | Route | Current behavior |
 | --- | --- |
 | `GET /health` | Reports backend availability |
-| `GET /` or `GET /auth/status` | Displays sign-in or current session status |
+| `GET /` | Serves the synthetic frontend when the Static Assets binding is available |
+| `GET /auth/status` | Displays sign-in or current session status |
 | `POST /auth/google/start` | Starts Google authorization with state, PKCE, and an OpenID Connect nonce |
 | `GET /auth/google/callback` | Consumes the pending flow, checks Google identity, saves authorization, and creates a session |
 | `GET /api/session` | Checks session validity without extending its lifetime |
@@ -28,7 +153,7 @@ The combined check replaced that workflow on November 14, 2026.
 Online checks passed for session requirements, origin restrictions, HTTP method restrictions, and script and stylesheet delivery.
 The user reported a successful live run of the combined workflow on the same date.
 The November 4 browser result displayed seven complete stream reads and a heart-rate read limited to 3,000 samples.
-Full-day heart-rate retrieval remains incomplete. App comparison is an optional diagnostic, not a manual acceptance prerequisite.
+This historical result used the retired sample reader. The replacement rollup reader passed an authorized November 18, 2026 check.
 On November 14, 2026, the user reported a successful live RHR check and agreement with the source app.
 This single-date check exercised token refresh, account linkage, and retrieval of one `WITH_SLEEP` record.
 Other dates, missing-data cases, and calculation-method differences remain unverified.
@@ -140,24 +265,24 @@ The summary distinguishes complete reads, partial reads, failures, and skipped r
 | Daily HRV | `reconcile` | Source date and optional average HRV in milliseconds |
 | Total calories | Five-minute `rollUp` | Total kcal, including basal metabolism, with zero distinct from unavailable values |
 | Steps | `reconcile` | Complete source intervals and step counts |
-| Heart rate | `reconcile` | Five-minute sample means, counts, and first/last sample times |
+| Heart rate | Five-minute `rollUp` | API interval averages in bpm |
 | Sleep | `reconcile` | Complete intersecting sessions, stage chronology, and separate short awakenings |
 | Exercise | `reconcile` | Complete intersecting sessions, completion time, active seconds, pause events, and optional vigorous/peak seconds |
 | Heart rate zones | `reconcile` | Zone intervals without an inferred intensity or saturation score |
 
 Filters use snake case, such as `daily_resting_heart_rate.date`. JSON fields use camel case, such as `dailyRestingHeartRate`.
-The calories endpoint uses POST for a read-only aggregation. This request does not create or change source records.
+The calories and heart-rate endpoints use POST for a read-only aggregation. This request does not create or change source records.
 Sleep queries include sessions ending on the selected or following date. Exercise queries include starts on the previous or selected date.
 The adapter keeps whole sessions that intersect the selected day. Unusually long sessions can extend beyond these bounded query windows.
 This first inspection does not establish exhaustive session history, source reconciliation correctness, or complete sensor coverage.
 A finished page sequence establishes only that pagination finished for that bounded query.
 Google Health API responses are the authoritative product data. App and Takeout comparisons are optional diagnostics.
-The initial three-page heart-rate limit can interrupt a five-minute bucket. Partial sample means must not become complete replay inputs.
-The continuation workflow adds `Continue incomplete streams` for partial results across all eight streams. Deployment passed on November 14, 2026. Live continuation verification remains pending.
+Heart rate now uses API-provided five-minute means. The earlier sample-based read is retired.
+The continuation workflow adds `Continue incomplete streams` for partial results across all eight streams. Deployment passed on November 14, 2026. Live continuation verification remains pending for responses that need the manual continuation button.
 Each click reads up to ten additional pages. Each page uses a separate protected Worker request and at most two Google requests.
 The Worker refreshes access and reads one page per request, using the original stream-specific page size and filters.
 It returns normalized data and an opaque pagination cursor.
-For heart rate, the browser combines integer sample sums and counts, rather than averaging page means. Overlapping sample spans stop the batch.
+Heart-rate continuation appends complete rollup intervals. Duplicate intervals stop the batch and preserve earlier results.
 Other streams append normalized records, retain separate daily methods, and renumber sleep and exercise sessions across pages.
 Only an empty next-page cursor permits a complete status. Failures preserve earlier aggregates in the current page for an explicit retry.
 Reloading the page does not preserve continuation progress. No health records or continuation state enter D1.
@@ -225,35 +350,90 @@ The runtime tests bundle the production Google modules and execute them in local
 They use temporary loopback sockets and close the runtime after each test.
 The token request uses `redirect: "manual"` and rejects redirect responses. Workers does not support `redirect: "error"`.
 These checks do not establish a successful browser login or measured Free-tier runtime performance.
-The build command uses Wrangler's `--dry-run` and writes a local bundle to `dist/worker`. It does not deploy.
+Vite transpiles TypeScript and builds browser assets. It does not check TypeScript types.
+The separate typecheck command checks Worker, browser, shared-core, test, and tooling code.
+The build command writes browser assets to `dist/client` and the Worker bundle to `dist/healthcity`.
+The generated `dist/healthcity/wrangler.json` references the browser output. Building does not deploy.
 There is no configured lint command yet.
 
 Run `npm run dev` only when a local server is needed and startup has authorization.
 Run `npm run deploy` only when a deployment has authorization.
 Wrangler uses the existing Cloudflare login. The project commands disable telemetry and keep logs in `.wrangler/logs`.
 
-Wrangler disables `keep_names` because the diagnostic page embeds shared merge functions through `toString()`.
-The browser regression test builds with Wrangler and executes the served script for all eight streams.
-The frontend milestone must replace this temporary script delivery with a separate browser build.
+Vite and the Cloudflare plugin serve the frontend and Worker under one local origin.
+The local command uses `127.0.0.1:8787`. It does not deploy or configure local Google sign-in.
+The existing OAuth configuration still requires its configured HTTPS origin.
+
+Cloudflare sends `/auth/*`, `/api/*`, `/checks/*`, `/settings/*`, and `/health` to the Worker first.
+The Worker serves the root document through its Static Assets binding.
+There is no SPA fallback that can replace authentication or API responses with frontend HTML.
+Built client files contain no Worker authentication modules.
+
+The inspection page now loads a separate browser entry at `/checks/form.js`.
+Vite bundles its shared merge functions through normal imports.
+The Worker no longer embeds function source with `toString()`.
+The runtime regression test executes the built entry with synthetic continuation responses.
+It checks that continuation requires an explicit action.
+
+After an authorized local server starts, run the browser checks:
+
+```sh
+npm run test:browser
+```
+
+Playwright uses the existing Chrome installation and blocks external requests.
+It never starts a server. Start the local preview separately before these checks.
+The browser tests check model readiness, playback, asset inspection, tower comparison, and the narrow layout.
+They also check date changes, camera preservation, and restoration of the harbor walk and road traffic when seeking.
+They also check frozen frames during pause and identical surface restoration after seeking backward.
+These behavioral checks do not establish visual acceptance or a performance budget.
 
 ## Source map
 
+- `index.html` supplies the browser document and React mounting point.
+- `src/frontend/main.tsx` mounts the React application and imports its stylesheet.
+- `src/frontend/App.tsx` defines scene controls, the inspection card, and the replay interface.
+- `src/frontend/styles.css` defines the desktop and narrow-screen layouts.
+- `src/frontend/inspection.ts` controls the existing manual health-check form and continuation requests.
+- `src/core/replay.ts` owns replay time, speed, seeking, pause, and interruption handling.
+- `src/core/representative-day.ts` defines synthetic dates, five-minute step and energy data, preview counts, and boat poses.
+- `src/core/inspection-pages.ts` defines inspection tables and combines normalized continuation results.
+- `src/scene/BoatScene.tsx` composes the harbor assets, water, and lighting, and manages camera controls.
+- `src/scene/CargoBerth.tsx` poses the crane and mooring lines and controls the work lamps.
+- `src/scene/HarborWalk.tsx` positions and poses the walking figures from the replay clock and step totals.
+- `src/scene/harbor-layout.ts` defines shore coordinates, streets, crosswalks, plot locations, and routes.
+- `src/scene/HarborBlock.tsx` builds the pavement, shop fronts, square, and street furniture.
+- `src/scene/district-motion.ts` calculates distances along the routes and coordinates stops, crossings, and queues.
+- `src/scene/HarborRoad.tsx` positions vehicles and turns their wheels. The energy rate determines the vehicle count.
+- `src/scene/WaterSurface.tsx` renders blue-turquoise water, fine waves with restrained bending, and boat and pier reflections.
+- `scripts/build-boat.mjs` supplies the provisional editable model source.
+- `scripts/build-building.mjs` supplies the editable building source and combines static geometry by material.
+- `public/models/working-boat.glb` supplies the browser delivery asset.
+- `public/models/cargo-berth.glb` supplies the cargo equipment and transit shed.
+- `public/_headers` defines security headers for static resources.
+- `vite.config.ts` separates browser entries from the Worker build through the Cloudflare plugin.
+- `vitest.config.ts` selects source tests without loading the development server configuration.
+- `playwright.config.ts` and `tests/browser/boat.spec.ts` define local Chrome interaction checks.
 - `src/worker/index.ts` serves public resources and delegates application requests.
 - `src/worker/http.ts` supplies shared response headers and response construction.
 - `src/worker/auth.ts` defines application routes and handles sign-in, callback validation, sessions, activity, logout, disconnect, and health checks.
 - `src/worker/google.ts` constructs Google requests and checks signed ID tokens with `jose`.
 - `src/worker/google-health.ts` checks account linkage and bounds API pagination for eight core streams.
 - `src/worker/health-data.ts` derives time-zone boundaries and converts source records into inspection tables.
-- `src/worker/heart-pages.ts` combines heart-rate aggregates without retaining original samples.
-- `src/worker/inspection-pages.ts` combines normalized continuation results for all eight streams.
-- `src/worker/health-check.ts` renders the combined form and results, and supplies its browser script and stylesheet.
+- `src/worker/health-check.ts` renders the combined form and results, and supplies its stylesheet.
 - `src/worker/store.ts` contains D1 authentication queries and session deadlines.
 - `src/worker/security.ts` handles random values, hashes, cookies, and token encryption.
 - `src/worker/*.test.ts` checks routes, identity verification, persistence, and authorization boundaries.
 - `src/worker/google.runtime.test.ts` checks exchange, refresh, revocation, health reads, and redirect rejection in the Workers runtime.
 - `migrations/` defines the authentication schema and additive callback-lifecycle changes.
 - `wrangler.jsonc` selects the Worker entry point, Cloudflare account, URL settings, and runtime compatibility date.
-- `tsconfig.json` checks backend source with web API types. `tsconfig.test.json` also checks Node-based tests. Both exclude the standalone OAuth exercise.
+- `tsconfig.json` checks backend source with web API types. `tsconfig.test.json` also checks Node-based tests.
+- `tsconfig.frontend.json` checks React, scene, and shared-core source. `tsconfig.tools.json` checks configuration and browser tests.
 - `package.json` declares tools and commands. `package-lock.json` records resolved dependency versions.
-- `learning/oauth-callback/` preserves the earlier isolated OAuth concept exercise. Production code does not import it.
 - `docs/product-spec.md`, `docs/data-sources.md`, and `docs/adr/` contain accepted behavior and architecture decisions.
+
+
+The heart-rate rollup reader was deployed as version `0776cad7-2503-46f3-bbd4-1a0717c8e1c6`.
+The authorized November 18, 2026 check used America/Chicago and completed all eight streams.
+Heart rate returned 284 five-minute intervals with valid API averages. Four intervals were omitted.
+The initial bounded read completed heart-rate pagination. The manual continuation button was unnecessary for this result.
