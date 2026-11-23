@@ -1,82 +1,9 @@
 import type { HealthInspection } from "./google-health.ts";
-import { mergeHeartRows } from "./heart-pages.ts";
-import { mergeInspectionPages } from "./inspection-pages.ts";
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 }
-
 export const CHECK_CSS = `body{font:16px/1.5 system-ui,sans-serif;max-width:72rem;margin:2rem auto;padding:0 1rem;color:#203331;background:#f7f9f8}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{border-bottom:1px solid #cbd7d3;padding:.5rem;text-align:left;vertical-align:top}caption{text-align:left;font-weight:600;margin:.6rem 0}details{margin:1rem 0;padding:.8rem;background:white;border:1px solid #cbd7d3;border-radius:.4rem}summary{cursor:pointer;font-weight:600}.scroll{overflow:auto;max-height:26rem}label{display:block}input,button{font:inherit;padding:.5rem}form p{display:inline-block;margin-right:1rem}button{cursor:pointer}button:disabled{cursor:wait}.muted{color:#546b65}.error{border-left:4px solid #a33;padding:.5rem 1rem}a{color:#185d52}`;
-
-const CHECK_SCRIPT = `const mergeHeartRows=${mergeHeartRows.toString()};
-const mergeInspectionPages=${mergeInspectionPages.toString()};
-const form=document.getElementById('health-check');
-const button=document.getElementById('run-check');
-const zone=document.getElementById('time-zone');
-const status=document.getElementById('check-status');
-if(!zone.value)zone.value=Intl.DateTimeFormat().resolvedOptions().timeZone;
-form.addEventListener('submit',(event)=>{
-  if(form.getAttribute('aria-busy')==='true'){event.preventDefault();return;}
-  form.setAttribute('aria-busy','true');button.disabled=true;button.textContent='Checking Google Health…';
-  status.textContent='Checking eight data types. This can take up to about one minute.';
-});
-window.addEventListener('pageshow',()=>{
-  form.removeAttribute('aria-busy');button.disabled=false;button.textContent='Run all read-only checks';status.textContent='';
-});`;
-
-const CONTINUE_SCRIPT = `
-const seed=document.getElementById('continuation-seed');
-const resume=document.getElementById('continue-batch');
-if(seed&&resume){
-  const states=JSON.parse(seed.textContent);
-  const seen=new Set();
-  resume.addEventListener('click',async()=>{
-    resume.disabled=true;
-    const report=document.getElementById('batch-progress');
-    try{
-      for(let page=0;page<10;page++){
-        const state=states.find(item=>item.token);
-        if(!state)break;
-        const signature=state.key+':'+state.token;
-        if(seen.has(signature))throw new Error('Repeated page token. The batch stopped.');
-        const response=await fetch('/checks/health/run',{method:'POST',credentials:'same-origin',
-          headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:new URLSearchParams({date:state.date,timeZone:state.zone,stream:state.key,pageToken:state.token,activity:page===0?'true':'false'})});
-        if(!response.ok||!response.headers.get('Content-Type')?.includes('application/json'))throw new Error('The batch stopped. Check your session and Google authorization before retrying.');
-        const next=await response.json();
-        if(typeof next.nextPageToken!=='string'||next.nextPageToken===state.token)throw new Error('Invalid continuation response.');
-        const data=mergeInspectionPages(state.key,state.data,next.data);
-        seen.add(signature);
-        state.data=data;state.token=next.nextPageToken;
-        report.textContent=state.title+': '+state.data.count+' records read.';
-      }
-    }catch(error){report.textContent=error.message+' Previously read data remains in this page.';}
-    for(const state of states){
-      const section=document.getElementById(state.key);
-      const container=section.querySelector('.tables');
-      container.replaceChildren();
-      for(const data of state.data.tables){
-        const details=document.createElement('details');const summary=document.createElement('summary');
-        summary.textContent=data.title+' ('+data.rows.length+' rows)';details.append(summary);
-        const scroll=document.createElement('div');scroll.className='scroll';
-        const table=document.createElement('table');const caption=document.createElement('caption');caption.textContent=data.title;table.append(caption);
-        const head=document.createElement('thead');const headings=document.createElement('tr');
-        for(const name of data.columns){const th=document.createElement('th');th.scope='col';th.textContent=name;headings.append(th);}head.append(headings);table.append(head);
-        const body=document.createElement('tbody');
-        for(const row of data.rows){const tr=document.createElement('tr');for(const cell of row){const td=document.createElement('td');td.textContent=cell===null?'Unavailable':String(cell);tr.append(td);}body.append(tr);}
-        table.append(body);scroll.append(table);details.append(scroll);container.append(details);
-      }
-      if(state.data.count)section.querySelector('.empty-result')?.remove();
-      const summary=document.querySelector('a[href="#'+state.key+'"]').closest('tr');
-      summary.cells[2].textContent=String(state.data.count);
-      if(!state.token){section.querySelector('strong').textContent='complete';section.querySelector('.error')?.remove();summary.cells[1].textContent='complete';}
-    }
-    const pending=states.some(item=>item.token);
-    resume.disabled=!pending;resume.textContent=pending?'Continue next batch':'All page sequences complete';
-    if(!pending)report.textContent='All page sequences complete.';
-  });
-}
-`;
 
 export function healthCheckHtml(date = "", timeZone = "", result?: HealthInspection, message?: string): string {
   let outcome = "";
@@ -103,7 +30,7 @@ ${(check.data?.notes ?? []).map((note) => `<p class="muted">${escapeHtml(note)}<
     }
   }
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Health data check</title>
-<link rel="stylesheet" href="/checks/styles.css"><script src="/checks/form.js" defer></script>
+<link rel="stylesheet" href="/checks/styles.css"><script type="module" src="/checks/form.js"></script>
 <h1>Health data check</h1>
 ${message ? `<div class="error"><h2>Check failed</h2><p role="alert">${escapeHtml(message)}</p></div>` : ''}
 <p>Check RHR, HRV, total calories, steps, heart rate, sleep, exercise, and heart rate zones in one manual run.</p>
@@ -114,5 +41,3 @@ ${message ? `<div class="error"><h2>Check failed</h2><p role="alert">${escapeHtm
 <details><summary>Google authorization</summary><p>This check needs the activity, health metrics, and sleep read-only permissions.</p><form method="post" action="/auth/google/start"><input type="hidden" name="renew" value="true"><button>Renew Google authorization</button></form></details>
 ${outcome}<p><a href="/auth/status">Return to HealthCity</a></p></html>`;
 }
-
-export const HEALTH_CHECK_SCRIPT = CHECK_SCRIPT + CONTINUE_SCRIPT;

@@ -65,7 +65,7 @@ describe("Google OAuth in the Workers runtime", () => {
             expect(request.headers.get("Authorization")).toBe("Bearer synthetic-access");
             if (request.url.endsWith("/identity")) return Response.json({ healthUserId: "synthetic-health-user" });
             const kind = new URL(request.url).pathname.split("/")[5];
-            if (kind === "total-calories") {
+            if (kind === "total-calories" || kind === "heart-rate") {
               expect(request.method).toBe("POST");
               expect(await request.json()).toMatchObject({ range: { startTime: "2026-11-08T06:00:00Z", endTime: "2026-11-09T06:00:00Z" }, windowSize: "300s" });
             } else expect(request.method).toBe("GET");

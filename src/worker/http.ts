@@ -8,3 +8,7 @@ export function respond(body: string | null, status = 200, extra: Record<string,
   return new Response(body, { status, headers: { ...RESPONSE_HEADERS, ...extra } });
 }
 
+export function respondJson(body: unknown, status = 200): Response {
+  return respond(JSON.stringify(body), status, { "Content-Type": "application/json; charset=utf-8" });
+}
+

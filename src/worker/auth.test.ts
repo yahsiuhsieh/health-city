@@ -1,4 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { RECORDED_REPLAY_PATH } from "../core/recorded-replay.ts";
+import { DAILY_HRV_PATH } from "../core/daily-hrv.ts";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import type { D1Database } from "@cloudflare/workers-types";
@@ -33,6 +35,7 @@ function database() {
   sql.exec("PRAGMA foreign_keys = ON");
   sql.exec(readFileSync(new URL("../../migrations/0001_auth.sql", import.meta.url), "utf8"));
   sql.exec(readFileSync(new URL("../../migrations/0002_claimed_oauth_flows.sql", import.meta.url), "utf8"));
+  sql.exec(readFileSync(new URL("../../migrations/0003_heart_rate_days.sql", import.meta.url), "utf8"));
   function prepare(query: string) {
     let values: (string | number | null)[] = [];
     const statement = {
@@ -70,6 +73,7 @@ function fixture() {
     claims: {} as Record<string, unknown>, tokenFields: {} as Record<string, unknown>,
     badSignature: false, providerFailure: false, revokeStatus: 200, revokeError: "", beforeToken: undefined as (() => Promise<void>) | undefined,
     refreshStatus: 200, beforeHealth: undefined as (() => Promise<void>) | undefined,
+    heartResponse: {} as Record<string, unknown>,dailyHrvResponse: {} as Record<string, unknown>,
   };
   const env: Env = {
     DB: db, APP_ORIGIN: origin, GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "synthetic-secret",
@@ -81,6 +85,8 @@ function fixture() {
       expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer synthetic-access-token");
       if (url.endsWith("/identity")) return Response.json({ healthUserId: "synthetic-health-user" });
       await state.beforeHealth?.();
+      if (url.includes("/daily-heart-rate-variability/")) return Response.json(state.dailyHrvResponse);
+      if (url.includes("/heart-rate/")) return Response.json(state.heartResponse);
       if (!url.includes("/daily-resting-heart-rate/")) return Response.json({});
       return Response.json({ dataPoints: ["WITH_SLEEP", "ONLY_WITH_AWAKE_DATA"].map((method) => ({
         dataPointName: "synthetic-source-record",
@@ -146,6 +152,79 @@ describe("Google OAuth and owner sessions", () => {
     return response.headers.getSetCookie().find((value) => value.startsWith(`${SESSION_COOKIE}=`))!.split(";")[0]!;
   }
 
+  it("allows one explicit owner HRV read and returns only normalized data", async () => {
+    const f = fixture();
+    const cookie = await signedIn(f);
+    const body = "date=2026-11-08&timeZone=America%2FChicago";
+    f.fetcher.mockClear();
+    expect((await f.request(DAILY_HRV_PATH, "POST", cookie, origin, body)).status).toBe(503);
+    f.env.GOOGLE_HRV_REPLAY_ENABLED = "true";
+    expect((await f.request(DAILY_HRV_PATH, "POST", "", origin, body)).status).toBe(401);
+    expect((await f.request(DAILY_HRV_PATH, "POST", cookie, "https://other.test", body)).status).toBe(403);
+    expect((await f.request(DAILY_HRV_PATH, "POST", cookie, origin, "date=2026-11-09&timeZone=UTC")).status).toBe(400);
+    expect(f.fetcher).not.toHaveBeenCalled();
+    f.state.dailyHrvResponse = { dataPoints: [{ dataPointName: "private-vendor-id",
+      dailyHeartRateVariability: { date: { year: 2026, month: 11, day: 8 }, averageHeartRateVariabilityMilliseconds: 103.71 },
+    }] };
+    const response = await f.request(DAILY_HRV_PATH, "POST", cookie, origin, body);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.json()).toEqual({
+      hrv: { source: "google-health", date: "2026-11-08", rmssdMs: 103.71 }, googleHealthEnabled: true,
+    });
+    expect(f.fetcher).toHaveBeenCalledTimes(2);
+    const query = new URL(String(f.fetcher.mock.calls[1]![0]));
+    expect(query.pathname).toBe("/v4/users/me/dataTypes/daily-heart-rate-variability/dataPoints:reconcile");
+    expect(query.searchParams.get("filter")).toBe('daily_heart_rate_variability.date >= "2026-11-08" AND daily_heart_rate_variability.date < "2026-11-09"');
+    expect(f.sql.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(table => table.name).sort())
+      .toEqual(["google_connection", "heart_rate_days", "oauth_flows", "sessions"]);
+  });
+
+  it("protects the recorded replay and preserves other streams if one stream fails", async () => {
+    const f = fixture();
+    const cookie = await signedIn(f);
+    const body = "date=2026-11-08&timeZone=America%2FChicago";
+    f.fetcher.mockClear();
+    expect((await f.request(RECORDED_REPLAY_PATH, "POST", cookie, origin, body)).status).toBe(503);
+    f.env.GOOGLE_HRV_REPLAY_ENABLED = "true";
+    expect((await f.request(RECORDED_REPLAY_PATH, "POST", "", origin, body)).status).toBe(401);
+    expect((await f.request(RECORDED_REPLAY_PATH, "POST", cookie, "https://other.test", body)).status).toBe(403);
+    expect(f.fetcher).not.toHaveBeenCalled();
+    f.state.dailyHrvResponse = { dataPoints: null };
+    const response = await f.request(RECORDED_REPLAY_PATH, "POST", cookie, origin, body);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.json()).toEqual({
+      date: "2026-11-08", timeZone: "America/Chicago", hrv: { status: "failed" },
+      heartRate: { status:"ready",value:Array(288).fill(null) }, cachedHeartRate:false,
+      calories: { status: "ready", value: Array(288).fill(null) },
+      steps: { status: "ready", value: Array(288).fill(null) },
+    });
+    expect(f.fetcher).toHaveBeenCalledTimes(5);
+  });
+
+  it("keeps the last complete heart-rate snapshot and applies confirmed corrections and removals",async()=>{
+    const f=fixture(),cookie=await signedIn(f);
+    f.env.GOOGLE_HRV_REPLAY_ENABLED="true";
+    const read=async()=> (await f.request(RECORDED_REPLAY_PATH,"POST",cookie,origin,"date=2026-11-08&timeZone=America%2FChicago")).json() as Promise<{cachedHeartRate:boolean;heartRate:{value:(number|null)[]}}>;
+    const point={startTime:"2026-11-08T06:00:00Z",endTime:"2026-11-08T06:05:00Z",heartRate:{beatsPerMinuteAvg:67.381}};
+    f.state.heartResponse={rollupDataPoints:[point]};
+    expect((await read()).heartRate.value[0]).toBe(67.381);
+    f.state.heartResponse={rollupDataPoints:[point],nextPageToken:"repeat"};
+    let result=await read();
+    expect(result.cachedHeartRate).toBe(true);
+    expect(result.heartRate.value[0]).toBe(67.381);
+    f.state.refreshStatus=401;
+    expect((await read()).heartRate.value[0]).toBe(67.381);
+    f.state.refreshStatus=200;
+    point.heartRate.beatsPerMinuteAvg=69.87;
+    f.state.heartResponse={rollupDataPoints:[point]};
+    expect((await read()).heartRate.value[0]).toBe(69.87);
+    f.state.heartResponse={};result=await read();
+    expect(result.cachedHeartRate).toBe(false);
+    expect(result.heartRate.value.every(v=>v===null)).toBe(true);
+  });
+
   it("requires a valid session, same-origin submission, and one real date before health requests", async () => {
     const f = fixture();
     expect((await f.request("/checks/health")).status).toBe(401);
@@ -188,7 +267,7 @@ describe("Google OAuth and owner sessions", () => {
     expect(f.sql.prepare("SELECT * FROM google_connection").get()).toEqual(connection);
     expect(f.sql.prepare("SELECT last_active_at FROM sessions").get()!.last_active_at).toBe(f.state.now);
     expect(f.sql.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((table) => table.name).sort())
-      .toEqual(["google_connection", "oauth_flows", "sessions"]);
+      .toEqual(["google_connection", "heart_rate_days", "oauth_flows", "sessions"]);
   });
 
   it("preserves the connection and session when refresh fails without calling the Health API", async () => {

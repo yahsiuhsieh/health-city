@@ -1,5 +1,8 @@
-import { inspectRecords, object } from "./health-data.ts";
+import { dailyHrvRmssd, inspectRecords, object } from "./health-data.ts";
 import type { DayWindow, InspectionData } from "./health-data.ts";
+import { replayTotals } from "./replay-activity.ts";
+import type { ActivityStream } from "./replay-activity.ts";
+import { deriveHrvSkyline } from "../core/skyline.ts";
 
 export type StreamCheck = {
   key: string; title: string; state: "complete" | "partial" | "failed" | "skipped";
@@ -13,12 +16,13 @@ export class HealthCheckError extends Error {
   constructor(message: string, public stop = false) { super(message); }
 }
 
+const hrvStream = { key: "daily-heart-rate-variability", field: "daily_heart_rate_variability.date", title: "Heart rate variability", pageSize: 25 };
 const streams = [
   { key: "daily-resting-heart-rate", field: "daily_resting_heart_rate.date", title: "Resting heart rate", pageSize: 25 },
-  { key: "daily-heart-rate-variability", field: "daily_heart_rate_variability.date", title: "Heart rate variability", pageSize: 25 },
+  hrvStream,
   { key: "total-calories", field: "", title: "Total calories", pageSize: 1000 },
   { key: "steps", field: "steps.interval.start_time", title: "Steps", pageSize: 1000 },
-  { key: "heart-rate", field: "heart_rate.sample_time.physical_time", title: "Heart rate", pageSize: 1000 },
+  { key: "heart-rate", field: "", title: "Heart rate", pageSize: 1000 },
   { key: "sleep", field: "sleep.interval.end_time", title: "Sleep", pageSize: 25 },
   { key: "exercise", field: "exercise.interval.civil_start_time", title: "Exercise", pageSize: 25 },
   { key: "time-in-heart-rate-zone", field: "time_in_heart_rate_zone.interval.start_time", title: "Heart rate zones", pageSize: 1000 },
@@ -29,7 +33,7 @@ export function isInspectionStream(key: string): boolean {
 }
 
 function pageRequest(stream: (typeof streams)[number], window: DayWindow, pageToken: string) {
-  const rollup = stream.key === "total-calories";
+  const rollup = stream.key === "total-calories" || stream.key === "heart-rate";
   const url = new URL(`https://health.googleapis.com/v4/users/me/dataTypes/${stream.key}/dataPoints:${rollup ? "rollUp" : "reconcile"}`);
   let body: object | undefined;
   if (rollup) {
@@ -78,7 +82,7 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
   async function readPage(stream: (typeof streams)[number], window: DayWindow, accessToken: string, pageToken: string, timeout = 10_000) {
     const request = pageRequest(stream, window, pageToken);
     const response = await read(request.url, accessToken, request.body, timeout);
-    const points = response[request.field] ?? [];
+    const points = response[request.field] === undefined ? [] : response[request.field];
     const nextPageToken = response.nextPageToken === undefined ? "" : response.nextPageToken;
     if (!Array.isArray(points) || points.length > stream.pageSize || typeof nextPageToken !== "string" ||
         (nextPageToken !== "" && nextPageToken === pageToken)) {
@@ -88,6 +92,41 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
   }
 
   return {
+    async readDailyHrv(accessToken: string, window: DayWindow, active: () => Promise<boolean>): Promise<number | null> {
+      let token = "";
+      let record: number | null | undefined;
+      const seen = new Set<string>();
+      for (let page = 0; page < 3; page++) {
+        if (!await active()) throw new HealthCheckError("Sign-in required.", true);
+        const { points, nextPageToken } = await readPage(hrvStream, window, accessToken, token);
+        for (const point of points) {
+          if (record !== undefined) throw new HealthCheckError("Google Health returned more than one daily HRV record.");
+          record = dailyHrvRmssd(point, window.date);
+          if (deriveHrvSkyline(record).status === "invalid") throw new HealthCheckError("Google Health returned an invalid daily HRV value.");
+        }
+        if (nextPageToken === "") return record ?? null;
+        if (seen.has(nextPageToken)) throw new HealthCheckError("Google Health returned a repeated page token.");
+        seen.add(nextPageToken);
+        token = nextPageToken;
+      }
+      throw new HealthCheckError("The daily HRV read did not complete.");
+    },
+    async readReplayActivity(kind: ActivityStream, accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
+      const stream = streams.find(item => item.key === kind)!;
+      const points: unknown[] = [];
+      const seen = new Set<string>();
+      let token = "";
+      for (let page = 0; page < 5; page++) {
+        if (!await active()) throw new HealthCheckError("Sign-in required.", true);
+        const { points: records, nextPageToken } = await readPage(stream, window, accessToken, token, 5_000);
+        points.push(...records);
+        if (!nextPageToken) return replayTotals(kind, points, window);
+        if (seen.has(nextPageToken)) throw new HealthCheckError("Google Health returned a repeated page token.");
+        seen.add(nextPageToken);
+        token = nextPageToken;
+      }
+      throw new HealthCheckError("The replay activity read did not complete.");
+    },
     async streamPage(accessToken: string, window: DayWindow, key: string, pageToken: string) {
       const stream = streams.find((item) => item.key === key);
       if (!stream) throw new HealthCheckError("Unknown health data stream.");

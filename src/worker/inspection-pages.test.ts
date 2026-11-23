@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeInspectionPages } from "./inspection-pages.ts";
+import { mergeInspectionPages } from "../core/inspection-pages.ts";
 import { createGoogleHealthClient } from "./google-health.ts";
 import { dayWindow } from "./health-data.ts";
 
@@ -11,7 +11,7 @@ describe("Continuation for every core stream", () => {
       calls++;
       const url = new URL(String(input));
       expect(url.pathname).toContain(`/dataTypes/${key}/`);
-      if (key === "total-calories") {
+      if (key === "total-calories" || key === "heart-rate") {
         expect(init?.method).toBe("POST");
         expect(JSON.parse(String(init?.body))).toMatchObject({ pageToken: "next", windowSize: "300s" });
       } else expect(url.searchParams.get("pageToken")).toBe("next");
@@ -32,4 +32,15 @@ describe("Continuation for every core stream", () => {
     expect(result.tables[2]!.title).toBe("Sleep 2: stages");
     expect(page.count).toBe(1);
   });
+});
+
+
+it("appends complete heart rate intervals and rejects cross-page duplicates without changing earlier results", () => {
+  const current = { count: 1, notes: [], tables: [{ title: "Heart", columns: ["Start", "End", "Mean"],
+    rows: [["2026-11-04T00:05:00Z", "2026-11-04T00:10:00Z", 81.25]] }] };
+  const incoming = { ...current, tables: [{ ...current.tables[0]!, rows: [["2026-11-04T00:00:00Z", "2026-11-04T00:05:00Z", 62.4]] }] };
+  const merged = mergeInspectionPages("heart-rate", current, incoming);
+  expect(merged.tables[0]!.rows.map(row => row[2])).toEqual([62.4, 81.25]);
+  expect(() => mergeInspectionPages("heart-rate", current, current)).toThrow("Duplicate");
+  expect(current.tables[0]!.rows).toHaveLength(1);
 });

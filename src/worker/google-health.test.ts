@@ -11,6 +11,41 @@ const record = (beatsPerMinute = "61", method: string | null = "WITH_SLEEP") => 
     ...(method === null ? {} : { dailyRestingHeartRateMetadata: { calculationMethod: method } }) },
 });
 
+const hrvPoint = (rmssd?: number, day = 29) => ({
+  dailyHeartRateVariability: { date: { year: 2024, month: 2, day }, averageHeartRateVariabilityMilliseconds: rmssd },
+});
+
+it("preserves zero and omitted daily values after all HRV pages complete", async () => {
+  const fetcher = vi.fn<typeof fetch>()
+    .mockResolvedValueOnce(Response.json({ nextPageToken: "next" }))
+    .mockResolvedValueOnce(Response.json({ dataPoints: [hrvPoint(0)] }))
+    .mockResolvedValueOnce(Response.json({ dataPoints: [hrvPoint()] }));
+  const client = createGoogleHealthClient(fetcher);
+  await expect(client.readDailyHrv("synthetic-token", window, async () => true)).resolves.toBe(0);
+  expect(new URL(String(fetcher.mock.calls[1]![0])).searchParams.get("pageToken")).toBe("next");
+  await expect(client.readDailyHrv("synthetic-token", window, async () => true)).resolves.toBeNull();
+});
+
+it.each([
+  { dataPoints: [hrvPoint(100, 28)] },
+  { dataPoints: [hrvPoint(100), hrvPoint(105)] },
+  { dataPoints: [hrvPoint(-1)] },
+  { dataPoints: null },
+])("rejects inconsistent or malformed HRV data", async payload => {
+  const client = createGoogleHealthClient(async () => Response.json(payload));
+  await expect(client.readDailyHrv("synthetic-token", window, async () => true)).rejects.toThrow();
+});
+
+it("does not return a numeric HRV value if the read is incomplete", async () => {
+  let page = 0;
+  const client = createGoogleHealthClient(async () => {
+    page++;
+    return Response.json({ dataPoints: page === 1 ? [hrvPoint(103.7)] : [], nextPageToken: "cursor-" + page });
+  });
+  await expect(client.readDailyHrv("synthetic-token", window, async () => true)).rejects.toThrow("did not complete");
+  expect(page).toBe(3);
+});
+
 describe("Complete read-only health inspection", () => {
   it("uses IANA calendar days across leap dates, DST, and skipped dates", () => {
     expect(window.nextDate).toBe("2024-03-01");
@@ -32,7 +67,7 @@ describe("Complete read-only health inspection", () => {
       expect(init?.redirect).toBe("manual");
       expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer synthetic-access");
       const kind = url.pathname.split("/")[5];
-      if (kind === "total-calories") {
+      if (kind === "total-calories" || kind === "heart-rate") {
         expect(init?.method).toBe("POST");
         expect(url.pathname).toMatch(/:rollUp$/);
         expect(JSON.parse(String(init?.body))).toEqual({ range: { startTime: window.start, endTime: window.end }, windowSize: "300s", pageSize: 1000 });
@@ -112,13 +147,15 @@ describe("Complete read-only health inspection", () => {
     expect(data.tables[0]!.rows.map((row) => row[2])).toEqual([0, null]);
   });
 
-  it("derives sample means with counts and leaves empty intervals unavailable", () => {
-    const data = inspectRecords("heart-rate", [60, 80].map((bpm, index) => ({ heartRate: {
-      sampleTime: { physicalTime: `2024-02-29T00:0${index}:00Z` }, beatsPerMinute: String(bpm),
-    } })), window);
-    expect(data.tables[0]!.rows).toHaveLength(288);
-    expect(data.tables[0]!.rows[0]!.slice(2, 4)).toEqual([70, 2]);
-    expect(data.tables[0]!.rows[1]!.slice(2, 4)).toEqual([null, 0]);
+  it("preserves API heart rate means and missing values without filling omitted windows", () => {
+    const points = [
+      { startTime: "2024-02-29T00:05:00Z", endTime: "2024-02-29T00:10:00Z" },
+      { startTime: "2024-02-29T00:00:00Z", endTime: "2024-02-29T00:05:00Z", heartRate: { beatsPerMinuteAvg: 70.123456 } },
+    ];
+    const data = inspectRecords("heart-rate", points, window);
+    expect(data.tables[0]!.rows.map(row => row[2])).toEqual([70.123456, null]);
+    expect(() => inspectRecords("heart-rate", [points[0], points[0]], window)).toThrow();
+    expect(() => inspectRecords("heart-rate", [{ ...points[0], endTime: "2024-02-29T00:09:00Z" }], window)).toThrow();
   });
 
   it("preserves whole cross-midnight sleep and overlapping short awakenings separately", () => {
@@ -161,4 +198,24 @@ describe("Complete read-only health inspection", () => {
     const google = createGoogleClient(async () => Response.json({ access_token: "synthetic-access", token_type: "Bearer", expires_in: 3600, ...fields }));
     await expect(google.refresh("synthetic-refresh", { clientId: "test", clientSecret: "synthetic-secret" })).rejects.toThrow();
   });
+});
+
+it.each([["2026-03-08", 276], ["2026-11-01", 300]] as const)("uses the exact local day for heart rollups on %s", async (date, count) => {
+  const range = dayWindow(date, "America/Chicago")!;
+  const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+    expect(String(input)).toContain("/heart-rate/dataPoints:rollUp");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      range: { startTime: range.start, endTime: range.end }, windowSize: "300s", pageSize: 1000, pageToken: "cursor",
+    });
+    const start = Date.parse(range.start);
+    return Response.json({ rollupDataPoints: Array.from({ length: count }, (_, i) => ({
+      startTime: new Date(start + i * 300000).toISOString(),
+      endTime: new Date(start + (i + 1) * 300000).toISOString(), heartRate: { beatsPerMinuteAvg: 71.125 },
+    })).reverse() });
+  });
+  const result = await createGoogleHealthClient(fetcher).streamPage("test", range, "heart-rate", "cursor");
+  expect(result.data.tables[0]!.rows).toHaveLength(count);
+  expect(Date.parse(String(result.data.tables[0]!.rows[0]![0]))).toBe(Date.parse(range.start));
+  expect(Date.parse(String(result.data.tables[0]!.rows.at(-1)![1]))).toBe(Date.parse(range.end));
 });

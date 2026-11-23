@@ -1,4 +1,9 @@
-import { respond } from "./http.ts";
+import { readHeartSnapshot,saveHeartSnapshot } from "./heart-snapshot.ts";
+import { respond, respondJson } from "./http.ts";
+import { RECORDED_REPLAY_PATH } from "../core/recorded-replay.ts";
+import type { RecordedReplay, ReplayStream } from "../core/recorded-replay.ts";
+import { DAILY_HRV_PATH } from "../core/daily-hrv.ts";
+import type { DailyHrvResponse } from "../core/daily-hrv.ts";
 import type { D1Database } from "@cloudflare/workers-types";
 import { authorizationUrl, createGoogleClient, hasHealthScopes } from "./google.ts";
 import { createGoogleHealthClient, HealthCheckError, isInspectionStream } from "./google-health.ts";
@@ -10,6 +15,7 @@ import type { Connection } from "./store.ts";
 import { encryptionKeyBytes, encryptRefreshToken, decryptRefreshToken, hash, randomToken, readCookie, secureCookie } from "./security.ts";
 
 export interface Env {
+  ASSETS?: { fetch(request: Request): Promise<Response> };
   DB?: D1Database;
   APP_ORIGIN?: string;
   GOOGLE_CLIENT_ID?: string;
@@ -17,6 +23,7 @@ export interface Env {
   OWNER_EMAIL?: string;
   TOKEN_ENCRYPTION_KEY?: string;
   AUTH_ENABLED?: string;
+  GOOGLE_HRV_REPLAY_ENABLED?: string;
 }
 
 const FLOW_COOKIE = "__Host-hc_oauth";
@@ -100,6 +107,7 @@ const routes = new Map([
   ["/auth/logout", "POST"], ["/api/session/activity", "POST"],
   ["/settings/disconnect", "GET"], ["/auth/disconnect", "POST"],
   ["/checks/health", "GET"], ["/checks/health/run", "POST"],
+  [DAILY_HRV_PATH, "POST"], [RECORDED_REPLAY_PATH, "POST"],
 ]);
 
 export function createAuthHandler(google = createGoogleClient(), clock: () => number = Date.now, health = createGoogleHealthClient()) {
@@ -108,6 +116,10 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
     const method = routes.get(url.pathname);
     if (!method) return respond("Not found.", 404);
     if (request.method !== method) return respond("Method not allowed.", 405, { Allow: method });
+    const replayRoute = url.pathname === DAILY_HRV_PATH || url.pathname === RECORDED_REPLAY_PATH;
+    if (replayRoute && env.GOOGLE_HRV_REPLAY_ENABLED !== "true") {
+      return respondJson({ error: "replay_disabled" }, 503);
+    }
     const isCallback = url.pathname === "/auth/google/callback";
     const config = configFor(env);
     if (!config) {
@@ -122,6 +134,81 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
     const now = clock();
     const sessionId = readCookie(request, SESSION_COOKIE);
     const sessionHash = sessionId ? await hash(sessionId) : null;
+    if (replayRoute) {
+      const active = () => sessionHash ? store.session(sessionHash, clock()) : Promise.resolve(false);
+      if (!sessionHash || !await active()) return respondJson({ error: "sign_in_required" }, 401);
+      if (request.headers.get("Content-Type")?.split(";")[0] !== "application/x-www-form-urlencoded") {
+        return respondJson({ error: "invalid_date" }, 400);
+      }
+      const form = new URLSearchParams(await request.text());
+      const dates = form.getAll("date");
+      const zones = form.getAll("timeZone");
+      const window = dates.length === 1 && zones.length === 1 ? dayWindow(dates[0]!, zones[0]!) : null;
+      if (!window || Date.parse(window.end) > now) return respondJson({ error: "invalid_date" }, 400);
+      const connection = await store.connection();
+      const cached = async () => {
+        if (!connection) return null;
+        return readHeartSnapshot(config.db,connection.google_sub,window).catch(()=>null);
+      };
+      const fallback = async () => {
+        if (url.pathname !== RECORDED_REPLAY_PATH) return null;
+        const means = await cached();
+        if (!means || !await active()) return null;
+        const failed = {status:"failed"};
+        return respondJson({date:window.date,timeZone:window.timeZone,hrv:failed,steps:failed,calories:failed,
+          cachedHeartRate:true,heartRate:{status:"ready",value:means}});
+      };
+      if (!usableConnection(connection, now)) return await fallback() ?? respondJson({ error: "authorization_required" }, 409);
+      if (!await store.activity(sessionHash, clock())) return respondJson({ error: "sign_in_required" }, 401);
+      let accessToken: string;
+      try {
+        const refreshToken = await decryptRefreshToken(connection.refresh_ciphertext, config.encryptionKey, connection.google_sub, config.clientId);
+        accessToken = await google.refresh(refreshToken, config);
+      } catch {
+        return await fallback() ?? respondJson({ error: "authorization_failed" }, 503);
+      }
+      if (url.pathname === RECORDED_REPLAY_PATH) {
+        const [hrv, calories, steps, heart] = await Promise.allSettled([
+          health.readDailyHrv(accessToken, window, active),
+          health.readReplayActivity("total-calories", accessToken, window, active),
+          health.readReplayActivity("steps", accessToken, window, active),
+          health.readReplayActivity("heart-rate", accessToken, window, active),
+        ]);
+        if (!await active()) return respondJson({ error: "sign_in_required" }, 401);
+        const stream = <T>(result: PromiseSettledResult<T>): ReplayStream<T> =>
+          result.status === "fulfilled" ? { status: "ready", value: result.value } : { status: "failed" };
+        let heartRate = stream(heart);
+        let cachedHeartRate = false;
+        if (heartRate.status === "ready") {
+          try {
+            await saveHeartSnapshot(config.db,connection.google_sub,window,heartRate.value,now,clock());
+          } catch {
+            // A failed snapshot transaction affects only the heart-rate stream.
+            heartRate={status:"failed"};
+          }
+        }
+        if (heartRate.status==="failed") {
+          const means = await cached();
+          if (means) { heartRate={status:"ready",value:means}; cachedHeartRate=true; }
+        }
+        const replay: RecordedReplay = {
+          date: window.date, timeZone: window.timeZone, heartRate, cachedHeartRate, hrv: stream(hrv), calories: stream(calories), steps: stream(steps),
+        };
+        if (!await active()) return respondJson({error:"sign_in_required"},401);
+        return respondJson(replay);
+      }
+      try {
+        const rmssdMs = await health.readDailyHrv(accessToken, window, active);
+        if (!await active()) return respondJson({ error: "sign_in_required" }, 401);
+        const result: DailyHrvResponse = {
+          hrv: { source: "google-health", date: window.date, rmssdMs }, googleHealthEnabled: true,
+        };
+        return respondJson(result);
+      } catch {
+        if (!await active()) return respondJson({ error: "sign_in_required" }, 401);
+        return respondJson({ error: "hrv_read_failed" }, 502);
+      }
+    }
     if (url.pathname === "/checks/health" || url.pathname === "/checks/health/run") {
       if (!sessionHash || !await store.session(sessionHash, now)) return signInRequired();
       if (url.pathname === "/checks/health") return healthPage();

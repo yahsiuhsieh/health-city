@@ -1,7 +1,7 @@
 import { Temporal } from "@js-temporal/polyfill";
 
-export type InspectionTable = { title: string; columns: string[]; rows: (string | number | null)[][] };
-export type InspectionData = { count: number; tables: InspectionTable[]; notes: string[] };
+import type { InspectionData, InspectionTable } from "../core/inspection-pages.ts";
+export type { InspectionData, InspectionTable } from "../core/inspection-pages.ts";
 export type DayWindow = { date: string; timeZone: string; nextDate: string; previousDate: string; start: string; end: string; following: string };
 
 export function dayWindow(date: string, timeZone: string): DayWindow | null {
@@ -42,15 +42,46 @@ function integer(value: unknown): number {
 }
 
 function timestamp(value: unknown): string {
-  return Temporal.Instant.from(text(value)).toString();
+  const raw = text(value);
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?Z$/.exec(raw);
+  // Parse regular UTC timestamps with the native clock. Preserve all fractional digits.
+  if (match) {
+    const whole = Date.parse(match[1] + "Z");
+    if (Number.isFinite(whole) && new Date(whole).toISOString().startsWith(match[1]!)) {
+      const fraction = match[2]?.replace(/0+$/, "");
+      return match[1] + (fraction ? "." + fraction : "") + "Z";
+    }
+  }
+  return Temporal.Instant.from(raw).toString();
 }
 
 function interval(value: unknown): { start: string; end: string } {
   const data = object(value);
   const start = timestamp(data.startTime);
   const end = timestamp(data.endTime);
-  if (Temporal.Instant.compare(start, end) >= 0) throw new Error("Invalid Google Health interval.");
+  const orderKey = (time: string) => time.slice(0, 19) + time.slice(20, -1).padEnd(9, "0");
+  const ordinary = /^\d{4}-/.test(start) && /^\d{4}-/.test(end);
+  if (ordinary ? orderKey(start) >= orderKey(end) : Temporal.Instant.compare(start, end) >= 0) {
+    throw new Error("Invalid Google Health interval.");
+  }
   return { start, end };
+}
+
+export function stepInterval(point: unknown) {
+  const data = object(object(point).steps);
+  return { ...interval(data.interval), value: integer(data.count) };
+}
+
+export function heartInterval(point: unknown) {
+  const data = object(point);
+  const raw = data.heartRate == null ? null : object(data.heartRate).beatsPerMinuteAvg;
+  return { ...interval(data), value: raw == null ? null : number(raw) };
+}
+
+export function calorieInterval(point: unknown) {
+  const data = object(point);
+  const calories = data.totalCalories == null ? null : object(data.totalCalories).kcalSum;
+  return { ...interval(data), value: calories == null ? null : number(calories) };
 }
 
 function list(value: unknown): unknown[] {
@@ -73,6 +104,12 @@ function daily(value: unknown, date: string): Record<string, unknown> {
   return data;
 }
 
+export function dailyHrvRmssd(point: unknown, date: string): number | null {
+  const data = daily(object(point).dailyHeartRateVariability, date);
+  const value = data.averageHeartRateVariabilityMilliseconds;
+  return value == null ? null : number(value);
+}
+
 const table = (title: string, columns: string[], rows: InspectionTable["rows"]): InspectionTable => ({ title, columns, rows });
 const milliseconds = (time: string) => Temporal.Instant.from(time).epochMilliseconds;
 
@@ -90,59 +127,47 @@ export function inspectRecords(kind: string, points: unknown[], window: DayWindo
     tables.push(table("Daily resting heart rate", ["Source date", "Beats per minute", "Calculation method"], rows));
     notes.push("Calculation methods remain separate. No canonical value is selected.");
   } else if (kind === "daily-heart-rate-variability") {
-    tables.push(table("Daily HRV", ["Source date", "Average HRV (ms)"], points.map((point) => {
-      const data = daily(object(point).dailyHeartRateVariability, window.date);
-      return [window.date, data.averageHeartRateVariabilityMilliseconds == null ? null : number(data.averageHeartRateVariabilityMilliseconds)];
-    })));
+    tables.push(table("Daily HRV", ["Source date", "Average HRV (ms)"], points.map(point => [window.date, dailyHrvRmssd(point, window.date)])));
     notes.push("A record can omit average HRV. An absent value remains unavailable.");
   } else if (kind === "total-calories") {
     const rows = points.map((point) => {
-      const data = object(point);
-      const time = interval(data);
+      const time = calorieInterval(point);
       if (milliseconds(time.start) < milliseconds(window.start) || milliseconds(time.end) > milliseconds(window.end)) throw new Error("Unexpected calorie interval.");
-      const calories = data.totalCalories == null ? null : object(data.totalCalories).kcalSum;
-      return [time.start, time.end, calories == null ? null : number(calories)];
+      return [time.start, time.end, time.value];
     });
     tables.push(table("Five-minute total calories", ["Start (UTC)", "End (UTC)", "Total kcal"], rows));
     notes.push("Total energy includes basal metabolism. Explicit zero and absent values remain distinct.");
     notes.push("Only returned buckets appear. An omitted bucket remains unavailable.");
   } else if (kind === "steps") {
     tables.push(table("Reconciled steps", ["Start (UTC)", "End (UTC)", "Steps"], points.map((point) => {
-      const data = object(object(point).steps);
-      const time = interval(data.interval);
-      return [time.start, time.end, integer(data.count)];
+      const time = stepInterval(point);
+      return [time.start, time.end, time.value];
     })));
     notes.push("These are reconciled source intervals. Boundary intervals remain complete and are not prorated.");
   } else if (kind === "heart-rate") {
-    const bins = new Map<number, { sum: number; count: number; first: string; last: string }>();
     const start = milliseconds(window.start);
     const end = milliseconds(window.end);
     const seen = new Set<string>();
-    for (const point of points) {
-      const data = object(object(point).heartRate);
-      const time = timestamp(object(data.sampleTime).physicalTime);
-      const instant = milliseconds(time);
-      if (instant < start || instant >= end || seen.has(time)) throw new Error("Unexpected or duplicate heart rate sample.");
-      seen.add(time);
-      const bpm = integer(data.beatsPerMinute);
-      const bucket = Math.floor((instant - start) / 300_000);
-      const bin = bins.get(bucket);
-      if (bin) {
-        bin.sum += bpm; bin.count++;
-        if (time < bin.first) bin.first = time;
-        if (time > bin.last) bin.last = time;
-      } else bins.set(bucket, { sum: bpm, count: 1, first: time, last: time });
-    }
-    const rows: InspectionTable["rows"] = [];
-    for (let bucket = 0; start + bucket * 300_000 < end; bucket++) {
-      const from = start + bucket * 300_000;
-      const bin = bins.get(bucket);
-      rows.push([new Date(from).toISOString(), new Date(Math.min(from + 300_000, end)).toISOString(),
-        bin ? bin.sum / bin.count : null, bin?.count ?? 0, bin?.first ?? null, bin?.last ?? null]);
-    }
-    tables.push(table("Five-minute sample means", ["Start (UTC)", "End (UTC)", "Mean bpm", "Samples", "First sample (UTC)", "Last sample (UTC)"], rows));
-    notes.push("Means use returned samples only. Sample counts do not establish continuous sensor coverage.");
-    notes.push("A partial read cannot establish complete daily means or missing intervals.");
+    const rows = points.map(point => {
+      const data = object(point);
+      const time = interval(data);
+      const from = milliseconds(time.start);
+      const until = milliseconds(time.end);
+      if (from < start || until > end || (from - start) % 300_000 !== 0 ||
+          until !== Math.min(from + 300_000, end) ||
+          time.start !== new Date(from).toISOString().replace(".000Z", "Z") ||
+          time.end !== new Date(until).toISOString().replace(".000Z", "Z") || seen.has(time.start)) {
+        throw new Error("Unexpected or duplicate heart rate interval.");
+      }
+      seen.add(time.start);
+      const raw = data.heartRate == null ? null : object(data.heartRate).beatsPerMinuteAvg;
+      const mean = raw == null ? null : number(raw);
+      if (mean !== null && mean < 0) throw new Error("Invalid heart rate average.");
+      return [time.start, time.end, mean];
+    }).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    tables.push(table("Five-minute heart rate", ["Start (UTC)", "End (UTC)", "Mean bpm"], rows));
+    notes.push("Google Health provides each interval average. Missing averages remain unavailable.");
+    notes.push("Only returned intervals appear. A complete read establishes finished pagination.");
   } else if (kind === "sleep") {
     count = 0;
     const sessions: InspectionTable["rows"] = [];
