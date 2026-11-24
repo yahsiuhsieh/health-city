@@ -92,3 +92,21 @@ it("repeats seeded splash events and excludes shallow water and boat paths",()=>
   expect(view.length/3).toBeGreaterThanOrEqual(.5);
   expect(view.length/3).toBeLessThanOrEqual(1.5);
 });
+
+it("samples 40 m of open water between the independent city and island shelves",async()=>{
+  const {JETTY_HEAD,routeFrame}=await import("../sleep/route.ts");
+  const [x,z]=JETTY_HEAD;
+  const city=buildSeabed(),island=buildSeabed({coastline:[],extraLand:[{
+    polygon:[[x,z-10],[x+20,z-10],[x+20,z-30],[x,z-30]],shoreWidth:7,revealKey:1
+  }]});
+  try{
+    expect(city.bounds.x+city.bounds.z).toBeLessThan(island.bounds.x);
+    for(let s=200;s<=850;s+=5){
+      const p=routeFrame(s);
+      for(const bed of [city,island]){
+        expect(bed.contains(p.x,p.z)).toBe(false);
+        expect(bed.depthAt(p.x,p.z)).toBe(40);
+      }
+    }
+  }finally{city.texture.dispose();island.texture.dispose();}
+});

@@ -1,7 +1,7 @@
 import {vesselLengths,vesselBeams} from "./city/harbor-plan.ts";
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { Box3, Mesh, MeshStandardMaterial, Vector3 } from "three";
+import { Box3, Mesh, MeshStandardMaterial, Triangle, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 describe("representative boat delivery asset", () => {
@@ -10,10 +10,10 @@ describe("representative boat delivery asset", () => {
     const buffer = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
     const model = await new GLTFLoader().parseAsync(buffer, "");
     const size = new Box3().setFromObject(model.scene).getSize(new Vector3());
-    expect(size.x).toBeGreaterThan(8);
-    expect(size.x).toBeLessThan(10);
+    expect(size.x).toBeCloseTo(20,0);
+    expect(size.z).toBeCloseTo(5.6,0);
     expect(size.y).toBeGreaterThan(4);
-    expect(size.z).toBeLessThan(4);
+    expect(size.y).toBeGreaterThan(9);
     for (const name of ["cargo-hull", "open-cargo-deck", "cargo-hatches", "cargo-crane", "wheelhouse"]) {
       expect(model.scene.getObjectByName(name), name).toBeDefined();
     }
@@ -45,6 +45,7 @@ it("keeps the permanent fleet and the deck-scale captain independently placeable
     expect(node).toBeInstanceOf(Mesh);
     const dimensions = new Box3().setFromObject(node).getSize(new Vector3());
     if (node.name === "Captain") {
+      expect(node.geometry.getAttribute("_joint").count).toBe(node.geometry.getAttribute("position").count);
       expect(dimensions.y).toBeGreaterThan(1.65);
       expect(dimensions.y).toBeLessThan(1.9);
     } else {
@@ -56,19 +57,38 @@ it("keeps the permanent fleet and the deck-scale captain independently placeable
   }
 });
 
-it("exports the 16 m working boat with its underwater fittings and working sockets",async()=>{
+it("exports the 20 m working boat with its underwater fittings and working sockets",async()=>{
   const bytes=await readFile(new URL("../../public/models/city-working-boat.glb",import.meta.url));
   const {scene}=await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),"");
   const size=new Box3().setFromObject(scene).getSize(new Vector3());
-  expect(size.x).toBeGreaterThan(15);expect(size.x).toBeLessThan(17);
-  expect(size.z).toBeCloseTo(5,0);
-  for(const name of ["keel","rudder","propeller","cargo-hull","cargo-hatches","wheelhouse","cargo-crane","bow-anchor","anchor-ball","anchor-light","captain-socket"])expect(scene.getObjectByName(name),name).toBeDefined();
+  expect(size.x).toBeCloseTo(vesselLengths.WorkingBoat!,0);
+  expect(size.z).toBeCloseTo(vesselBeams.WorkingBoat!,0);
+  for(const name of ["keel","rudder","propeller","cargo-hull","cargo-hatches","wheelhouse","cargo-crane","bow-anchor","anchor-ball","anchor-light","captain-socket","captain-helm","captain-foredeck","captain-bow-windlass","captain-aft-deck",
+    "captain-ladder-base","captain-ladder-top","captain-boarding-port","bow-line-fairlead","stern-line-fairlead","anchor-hawse","stern",
+    ...["port","starboard"].flatMap(side=>["captain-wh-door-"+side,"captain-side-"+side+"-fwd","captain-side-"+side+"-aft","captain-wing-"+side]),
+    ...["anchor","stern","masthead","port","starboard"].map(name=>"light-"+name)])expect(scene.getObjectByName(name),name).toBeDefined();
   let windows=0,shutters=0,triangles=0;
   scene.traverse(n=>{
     if(n instanceof Mesh){
       if(n.name.startsWith("cabin-window"))windows++;
       if(n.name.startsWith("cabin-shutter"))shutters++;
       triangles+=(n.geometry.index?.count??n.geometry.attributes.position!.count)/3;
+    }
+  });
+  const passages=[-1,1].map(side=>new Box3().setFromPoints([
+    new Vector3(-5.5,1.315,side*1.833),new Vector3(-1.3,3.315,side*2.733),
+  ]));
+  const face=new Triangle();
+  scene.traverse(node=>{
+    if(!(node instanceof Mesh))return;
+    const box=new Box3().setFromObject(node);
+    const nearby=passages.filter(p=>p.intersectsBox(box));
+    if(!nearby.length)return;
+    const geometry=node.geometry,vertices=geometry.getAttribute("position"),index=geometry.index;
+    for(let i=0;i<(index?.count??vertices.count);i+=3){
+      for(const [j,v] of [face.a,face.b,face.c].entries())
+        v.fromBufferAttribute(vertices,index?.getX(i+j)??i+j).applyMatrix4(node.matrixWorld);
+      for(const passage of nearby)expect(passage.intersectsTriangle(face),node.name).toBe(false);
     }
   });
   expect(windows).toBeGreaterThan(12);expect(shutters).toBe(windows);expect(triangles).toBeLessThan(30000);

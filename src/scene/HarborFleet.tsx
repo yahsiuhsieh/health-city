@@ -3,7 +3,6 @@ import { useMemo, useRef } from "react";
 import { useFrame, useLoader } from "@react-three/fiber";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {Group,InstancedMesh,Object3D,Vector3} from "three";
-import type {Quaternion} from "three";
 import type { Replay } from "../core/replay.ts";
 
 import {berths,cargoQuay,swellAmplitude,vesselLengths,vesselBeams} from "./city/harbor-plan.ts";
@@ -16,11 +15,6 @@ function useFleetModel(name: string) {
     model.castShadow = model.receiveShadow = true;
     return model;
   },[scene,name]);
-}
-
-export function Captain({position,quaternion}:{position:Vector3;quaternion:Quaternion}) {
-  const model = useFleetModel("Captain");
-  return <primitive object={model} position={position} quaternion={quaternion} dispose={null}/>;
 }
 
 function BerthedShip({ berth, replay }: { berth: typeof berths[number]; replay: Replay }) {

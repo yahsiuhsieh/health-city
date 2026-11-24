@@ -10,6 +10,6 @@ it("continues the same sleep voyage at midnight and restores a paused awakening"
   expect(asleepMinutes).toBe(442);
   expect(voyage(first,departure+sessionSeconds).stage).toBe("At island");
   expect(voyage(first,departure+sessionSeconds+1200).stage).toBe("Returning");
-  expect(voyage(first,departure+sessionSeconds+2400).moored).toBe(true);
+  expect(voyage(first,departure+sessionSeconds+4200).moored).toBe(true);
   expect(voyage(dayOffset("2026-11-12",false),3600).progress).toBe(0);
 });

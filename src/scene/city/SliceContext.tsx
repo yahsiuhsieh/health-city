@@ -23,7 +23,7 @@ const parkSite=SKYLINE_PLOTS[samplePlot.ordinal-1]!;
 const plots=SKYLINE_PLOTS.filter(p=>p.id!==5 && p.id!==parkSite.id).map(p=>
   p.id===0?{...p,x:parkSite.x,z:parkSite.z,yaw:parkSite.yaw}:p);
 export function SliceContext({hrv,night,day,replay,heartReady,inspect,onPlot}:{hrv:HrvSkyline;night:boolean;day:ReplayDay;replay:Replay;heartReady:boolean;onPlot:(id:number)=>void;inspect:(a:number,b:number)=>void}){
-  return <><CityGround occupiedCount={hrv.status==="available"?hrv.buildingCount:null} night={night} cutout={clippingPlanes}/><HarborBlock night={night} cutout={clippingPlanes}/>
+  return <><CityGround occupiedCount={hrv.status==="available"?hrv.buildingCount:null} night={night} cutout={clippingPlanes}/><HarborBlock replay={replay} night={night} cutout={clippingPlanes}/>
     <SkylineDistrict night={night} hrv={hrv} focus={null} onReady={noop} onSelect={noop} sites={plots} onPlot={onPlot}/>
     <HeartRidge day={day} replay={replay} available={heartReady} inspect={inspect}/>
   </>;

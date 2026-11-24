@@ -5,7 +5,7 @@ import {TOWER_DESIGNS,DISTRICT_SEED,designsForRow} from "./tower-designs.ts";
 export {TOWER_DESIGNS} from "./tower-designs.ts";
 
 export type TowerDesignId = typeof TOWER_DESIGNS[number]["id"];
-export type SceneView = "sleep" | "sleep-route" | "sleep-island" | "ridge" | "world" | "harbor" | "walk" | "road" | "detail" | "berth" | "skyline" | "square" | "side" | TowerDesignId;
+export type SceneView = "sleep" | "sleep-island" | "ridge" | "world" | "harbor" | "walk" | "road" | "detail" | "cargo" | "berth" | "skyline" | "square" | "side" | TowerDesignId;
 export type CameraCommand = { view: SceneView; revision: number; districtRows: number };
 
 export function isTowerView(view: SceneView): view is TowerDesignId {

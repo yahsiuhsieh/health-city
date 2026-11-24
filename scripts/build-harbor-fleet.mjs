@@ -9,6 +9,7 @@ const timber = "#996f48", ivory = "#e8dcbe", rubber = "#313b3d", glass = "#344f5
 const dimensions={Schooner:[11.2,3.4,1],Trawler:[20,6.5,1.48],Tug:[24,9,1.76],
   Freighter:[58,10.5,1.56],WaterTaxi:[12,4,1],Motorboat:[7,2.4,1]};
 let parts = [];
+let captainJoint;
 function part(geometry, color, position, rotation) {
   const g = geometry.index ? geometry.toNonIndexed() : geometry;
   if (rotation) g.applyQuaternion(rotation);
@@ -18,6 +19,7 @@ function part(geometry, color, position, rotation) {
   const colors = new Float32Array(g.attributes.position.count*3);
   for(let i=0;i<colors.length;i+=3) rgb.toArray(colors,i);
   g.setAttribute("color",new T.BufferAttribute(colors,3));
+  if(captainJoint!==undefined)g.setAttribute("joint",new T.Float32BufferAttribute(new Float32Array(g.attributes.position.count).fill(captainJoint),1));
   parts.push(g);
 }
 function box(x,y,z,w,h,d,c) { part(new T.BoxGeometry(w,h,d),c,[x,y,z]); }
@@ -177,24 +179,37 @@ hull(12,4,1.13,"#377973");
 cabin(-.9,1.0,7.35,2.14,3.12,"#d9c8a4");
 box(-.9,3.28,0,7.85,.21,3.62,"#b77945");
 finish("WaterTaxi");
-for(const side of [-1,1]) {
+// Joint IDs match the articulated captain in HarborFleet.
+for(const [i,side] of [-1,1].entries()) {
   const x=side*.126;
+  captainJoint=3+i*2;
   oval(x,.085,.055,.102,.087,.17,rubber);
-  beam([x,.14,0],[x*.82,.89,0],.098,"#364755",.12);
-  beam([side*.23,1.32,0],[side*.246,1.01,.08],.084,"#304454");
-  oval(side*.246,.99,.09,.065,.09,.07,"#b9886a");
+  beam([x,.14,0],[x,.48,0],.092,"#364755",.10);
+  captainJoint=2+i*2;
+  beam([x,.48,0],[x*.82,.89,0],.10,"#364755",.12);
+  captainJoint=6+i*2;
+  beam([side*.216,1.37,0],[side*.246,1.11,.014],.084,"#304454");
+  captainJoint=7+i*2;
+  beam([side*.246,1.11,.014],[side*.246,.94,.05],.065,"#304454");
+  oval(side*.246,.92,.06,.065,.085,.07,"#b9886a");
 }
+captainJoint=0;
 oval(0,1.12,0,.25,.39,.16,"#304454");
+captainJoint=1;
 oval(0,1.6,0,.146,.195,.14,"#bc9072");
 oval(0,1.556,.064,.126,.105,.094,"#655d51");
 oval(0,1.6,.14,.041,.048,.042,"#c99876");
 for(const side of [-1,1]){
+  captainJoint=1;
   oval(side*.057,1.637,.127,.019,.013,.012,"#433e39");
   oval(side*.14,1.599,0,.023,.043,.029,"#bd9071");
+  captainJoint=0;
   beam([side*.106,1.429,.10],[side*.031,1.267,.155],.025,"#526174");
 }
+captainJoint=1;
 oval(0,1.75,.025,.174,.065,.17,ivory);
 oval(0,1.71,.13,.15,.022,.09,rubber);
+captainJoint=0;
 for(const x of [-.075,.075]) for(const y of [1.06,1.2,1.34]) oval(x,y,.146,.016,.018,.012,"#bd994f");
 finish("Captain");
 globalThis.FileReader=class {readAsArrayBuffer(blob){blob.arrayBuffer().then(result=>{this.result=result;this.onloadend?.()})}};

@@ -257,32 +257,32 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 - Do not force departure or arrival at the date boundary. Preserve complete start and end dates in the session overview.
 - Make land area proportional to recorded time asleep, excluding awake intervals. Use a common scale across dates and sessions.
 - Doubling asleep duration doubles area, not diameter.
-- Show elapsed start-to-end duration separately. Use 2.4 m² of land per asleep minute across all session sizes. Apply no minimum or maximum island area.
-- Form a natural coastline with headlands and a bay at the landing. Exclude the underwater apron from the area.
-- Use the same 174.45 m route for every session. The route leaves the current working berth, passes the harbor mouth, and ends at the island pier.
-- Preserve the revealed stage environments for the selected day. Reveal the whole island through thinning mist during the final 12 m of the approach.
-- Prioritize duration and continuity in the overview. Show stage detail at closer scales.
-- Reveal stage environments progressively along the journey.
-- Final session end means arrival at the completed sleep island and full reveal. A temporary awakening is not arrival.
-- The REM island habitat occupies a coastal cove on land. Completed habitats preserve LIGHT, DEEP, and REM asleep-duration proportions. Awake interruptions add no land area.
+- Show elapsed start-to-end duration separately. Use 24 m² of land per asleep minute across all session sizes. Apply no minimum or maximum island area.
+- Form a natural coral cay on a reef platform. Count only land above the mean waterline. A jetty crosses the reef flat from the beach to the reef edge.
+- Use one fixed outbound route for every session. It leaves the working berth, passes the outer harbor mouth, and ends at the island jetty head.
+- The measured outbound route is 1,001.07 m, within the 1,000 ± 25 m target. The boat passes the outer mouth at 36.5 m. The final 120 m of forward travel runs parallel to the reef. The boat then slides 1 m to port to berth.
+- Record the chronology for the selected day in the voyage chart. Reveal the track progressively with replay time.
+- The chart shows duration, continuity, and stage proportions. The voyage view shows stage detail. Stage effects appear only during the corresponding stage.
+- Reveal the whole island through thinning mist during the final 60 m of approach. Complete the reveal at the final session end.
+- A temporary awakening adds no land and does not trigger arrival. Sleep stages do not change the geography or the sea state.
 - Show islands relevant to the selected day, including naps and sessions across midnight.
 - Historical dates provide access to older islands. Do not accumulate them permanently in the bay.
 
 ### Stage vocabulary
 
-| Recorded stage | Environment and boat behavior |
+| Recorded stage | Scene behavior |
 | --- | --- |
-| LIGHT | Reed-lined shallows and normal cruising. |
-| DEEP | Sheltered channel between rocky banks. Forest grows on the banks above the water. The cabin shutters close and the lights dim. |
-| REM | Coral, bioluminescent plants, and marine companions. |
-| AWAKE | Temporary pause or anchoring and brighter cabin activity. |
-| ASLEEP without stage classification | Neutral open-water passage and neutral island habitat. Preserve asleep duration without inventing a stage. |
+| LIGHT | Seabirds follow the boat and dive. Flying fish leave the water ahead of the bow. The captain operates the helm or walks on deck. |
+| DEEP | Wildlife leaves. The shutters close. The wheelhouse uses dim red night lighting. The captain sits at the helm. |
+| REM | One large companion type accompanies each segment, optionally with a fish school. At night, plankton glows around the companion and in the bow wave and wake. The captain watches from the rail. |
+| AWAKE | The boat stops or anchors. The cabin lights brighten. The captain works at the bow during anchoring. |
+| ASLEEP without stage classification | The boat crosses open water. The captain stands at the helm. Preserve asleep duration without inventing a stage. |
 
-- Preserve every recorded short awakening without rebuilding surrounding habitat. Show boat behavior when playback permits.
+- Preserve every short awakening. Show boat behavior when playback permits.
 - Wake buoys in the focused view expose timing and duration. Reduce their prominence in the overview.
-- REM companions may include fish, whales, rays, and sharks. Species vary encounters without encoding separate scores.
-- Feature one large creature type per REM segment, optionally with fish. Keep encounters consistent on replay.
-- Whales surface farther away. Rays glide beside or below the boat. Sharks cruise calmly outside the route.
+- REM companions may include fish, whales, rays, sharks, and dolphins. Species vary encounters without encoding separate scores. Keep encounters consistent on replay.
+- Whales surface farther away. Rays glide beside or below the boat. Whale sharks cruise slowly near the surface beside the route.
+- Dolphins ride the bow wave. A pod counts as one large companion type.
 
 ### Return voyage
 
@@ -329,7 +329,7 @@ The user accepts these eight representations:
 3. Daily HRV skyline.
 4. Daily RHR dam and reservoir.
 5. Heart-rate mountains and ridge train.
-6. Sleep boat, stage environments, and islands.
+6. Sleep boat, voyage chart, and islands.
 7. Monthly exercise garden and gardener.
 8. Historical daylight and estimated city weather.
 

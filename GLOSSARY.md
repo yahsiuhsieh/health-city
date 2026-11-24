@@ -30,16 +30,15 @@ _Avoid_: Separate sessions created solely because sleep crosses midnight.
 
 **Sleep overview**: A presentation of a complete sleep session, including its start and end dates. It is independent of the portion within the selected day view.
 
-**Sleep island**: An island for one complete sleep session. Land area is proportional to recorded time asleep, and habitat proportions reflect stage durations.
+**Sleep island**: An island for one complete sleep session. Land area is proportional to recorded time asleep.
 Naps have separate islands. Awake segments do not add islands or land area.
 
-**Sleep route**: The fixed outbound passage from the working berth to the sleep island pier.
+**Sleep route**: The fixed outbound passage from the working berth to the sleep island jetty head.
 _Avoid_: Return voyage.
 
-**Channel bank**: A narrow, forested rock ridge beside a DEEP sleep channel. Its forest grows above the water.
-_Avoid_: Sleep island.
+**Voyage chart**: A card that shows the chronology of one sleep session as a track on a nautical chart. It shows stage segments, awakenings, and durations.
 
-**Sleep journey**: The chronological boat journey through the environments for a sleep session's stages. Scenes appear progressively, ending with arrival at the completed sleep island.
+**Sleep journey**: The chronological boat journey during a sleep session. The boat reaches the completed sleep island at the final session end.
 _Avoid_: The return voyage to the city, repeated circuits around an island.
 
 **Wake buoy**: A marker for a recorded awake interruption within a sleep session.
@@ -51,7 +50,7 @@ _Avoid_: Light sleep, awake time, missing sleep records.
 **Return voyage**: The boat's return from a completed sleep island to the city harbor during the awake interval. Timing allows the next sleep departure.
 _Avoid_: Recorded sleep, actual travel, reverse playback of sleep stages.
 
-**REM companions**: Fish, whales, rays, or sharks accompanying REM portions of a sleep journey. Species vary encounters without encoding separate health scores.
+**REM companions**: Fish, whales, rays, sharks, or dolphins that accompany REM portions of a sleep journey. Species vary encounters without encoding separate health scores.
 The same segment has consistent encounters on replay.
 
 **World daylight**: Daylight at the replay instant, based on sunrise and sunset for the selected historical date and relevant location.

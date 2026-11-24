@@ -1,3 +1,4 @@
+import {breakwaterArms,workingQuay} from "./city/harbor-plan.ts";
 import {surfaceHeight} from "./city/terrain.ts";
 import { WATER_LEVEL } from "./ocean/layers.ts";
 import { port } from "./port-layout.ts";
@@ -8,6 +9,11 @@ export interface CoastSegment {type:ShoreType;points:Point[]}
 export const harborEdge:Point[]=[
   [-11,-55],[-3.425,-51],[-3.425,-25],[port.quayEdge,port.southEnd],
   [port.quayEdge,port.northEnd],[-12.8,port.northEnd],[-12.8,5.85],[-4,10],[-4,46],[-10,51],
+];
+// The detached harbor works are open shore segments outside the mainland polygon.
+export const harborWorks: CoastSegment[] = [
+  ...breakwaterArms.map(points => ({type:"revetment" as const,points:[...points]})),
+  {type:"quay",points:[[workingQuay.start,workingQuay.edge],[workingQuay.end,workingQuay.edge]]},
 ];
 export const coastSegments:CoastSegment[]=[
   {type:"quay",points:harborEdge.slice(0,8)},

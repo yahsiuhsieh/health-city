@@ -63,32 +63,20 @@ it("keeps the public quay walk outside the crane sweep and cargo vehicle entranc
   }
 });
 
-it("keeps the working boat clear of the fleet and breakwater through the east entrance",async()=>{
-  const {berths,breakwaterArms,cargoQuay,HARBOR_MOUTH,WORK_BOAT_BERTH,vesselLengths,vesselBeams}=await import("./city/harbor-plan.ts");
-  const {sailingPose}=await import("./sleep-voyage.ts");
-  expect(cargoQuay.end-cargoQuay.start).toBe(70);
-  expect(cargoQuay.top).toBe(1.6);
-  expect(Math.hypot(WORK_BOAT_BERTH.position[0]+1.745,WORK_BOAT_BERTH.position[1]+1.2)).toBeLessThan(15);
-  expect(HARBOR_MOUTH.direction).toEqual([1,0]);
-  let nearestMouth=Infinity;
-  for(let step=0;step<=2000;step++){
-    const p=sailingPose(step/10000);
-    nearestMouth=Math.min(nearestMouth,Math.hypot(p.x-HARBOR_MOUTH.point[0],p.z-HARBOR_MOUTH.point[1]));
-    if(p.x>HARBOR_MOUTH.point[0])break;
-    for(const u of [-8,0,8])for(const v of [-2.5,0,2.5]){
-      const x=p.x+u*Math.cos(p.yaw)+v*Math.sin(p.yaw),z=p.z-u*Math.sin(p.yaw)+v*Math.cos(p.yaw);
-      for(const berth of berths){
-        const dx=x-berth.x,dz=z-berth.z,c=Math.cos(berth.yaw),s=Math.sin(berth.yaw);
-        const gap=Math.hypot(Math.max(0,Math.abs(dx*c-dz*s)-vesselLengths[berth.name]!/2),
-          Math.max(0,Math.abs(dx*s+dz*c)-vesselBeams[berth.name]!/2));
-        expect(gap).toBeGreaterThanOrEqual(8);
-      }
-      for(const arm of breakwaterArms)for(let i=1;i<arm.length;i++){
-        const [ax,az]=arm[i-1]!,[bx,bz]=arm[i]!,dx=bx-ax,dz=bz-az;
-        const t=Math.min(1,Math.max(0,((x-ax)*dx+(z-az)*dz)/(dx*dx+dz*dz)));
-        expect(Math.hypot(x-ax-t*dx,z-az-t*dz)-3).toBeGreaterThanOrEqual(8);
-      }
-    }
-  }
-  expect(nearestMouth).toBeLessThan(.2);
+it("keeps both harbor entrances open and dredges the turning basin",async()=>{
+  const {OUTER_MOUTH,INNER_MOUTH,turningBasin,armMarks,breakwaterArms}=await import("./city/harbor-plan.ts");
+  const {basinClearance}=await import("./sleep/clearance.ts");
+  const {buildSeabed}=await import("./ocean/seabed.ts");
+  expect(INNER_MOUTH.point).toEqual([27,-6]);
+  expect(turningBasin.radius*2).toBeGreaterThanOrEqual(50);
+  expect(basinClearance(turningBasin.center,turningBasin.radius)).toBeGreaterThanOrEqual(6);
+  const heads=breakwaterArms.slice(-2).map(arm=>arm.at(-1)!);
+  const starboard=heads.findIndex(head=>head[1]<OUTER_MOUTH.point[1]);
+  expect(armMarks[2+starboard]).toBe("red");
+  expect(Math.abs(heads[0]![1]-heads[1]![1])-6).toBeGreaterThanOrEqual(30);
+  const bed=buildSeabed();
+  try{
+    expect(bed.depthAt(...turningBasin.center)).toBeCloseTo(5);
+    expect(bed.depthAt(...OUTER_MOUTH.point)).toBeGreaterThanOrEqual(4);
+  }finally{bed.texture.dispose();}
 });

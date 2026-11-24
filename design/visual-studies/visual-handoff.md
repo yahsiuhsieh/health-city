@@ -210,7 +210,7 @@ Production quality, performance budgets, exact materials, palette, geometry, and
 
 Browser checks covered loading, day/night switching, animation play/pause, camera buttons, close-up selection, and narrow layouts. Automated pointer-drag checks remained incomplete. The study contains procedural assets, not Blender models, and does not establish final production quality. Temporary localhost preview servers stopped after the checks.
 
-## Sleep voyage review, November 23, 2026
+## Earlier sleep voyage studies
 
 The user requested a voyage through successive sleep environments and an island at the destination. The previous prototype arranged the stages in wedges around a circular island. The reef study informed the open sponge tubes, layered coral, rock shelves, and sand gaps. [Reef reference](images/reef-reference.png)
 
@@ -232,3 +232,19 @@ The model sheets show the same assets with four rendering treatments. [Silhouett
 
 Checkpoint A used a temporary landing. The user expressed reservations about the stage environments.
 Checkpoint B includes the finished island, cabin and anchor states, buoy, companions, and inspection cards. Art approval is pending. [Final screenshots and measurements](sleep-voyage-v2/checkpoint-b/README.md)
+
+## Sleep voyage review: November 23, 2026
+
+The user rejected the checkpoint B overview. The 174.45 m passage compressed the island and its surroundings to toy scale. Repeated sandbars, water tints, and rows of trees followed the route. The channel banks had identical profiles and abrupt ends. Conifers and sheltered channels conflicted with the tropical lagoon.
+
+The uniform sand shelf formed a bright halo. Habitat colors made the land look like a chart. The reef looked scattered and the animals were hard to see. Area and clearance tests missed these visual problems. Compare browser captures with references at each checkpoint.
+
+Use fixed tropical geography with white coral sand, turquoise shallows, coconut palms, and broadleaf forest. Put coral around the destination cay. Show stage chronology on the voyage chart. Stages change wildlife, boat lighting, and the captain's work. Historical weather controls the sky and wind-driven water motion.
+
+Give LIGHT frequent seabird dives and flying fish. Give the captain room to walk between stations on a larger working boat. Provide a turning basin for forward berthing and a departure path that clears the island jetty. The user observed stern-first harbor entry and a departure through the old pier. [Tropical voyage plan](../../docs/plans/sleep-voyage-v3.md)
+
+## Sleep voyage v3 · Final chart
+
+The user approved the v3 working harbor, coral cay, stage wildlife, and captain. The user approved the final voyage chart artwork on November 23, 2026. This completed the visual review for Sleep Voyage v3. The final voyage chart uses the outbound course, local breakwaters, cay, and reef outlines. Its colored track grows with replay time. The anchor holds the boat marker at the same track distance during an awakening. The boat marker follows the return lane after departure from the island.
+
+The desktop card places the map beside the stage table. On a phone, the table follows the map. The 3D voyage, island, harbor, quay, and world views remain available. The chart replaces the route overview camera. [Desktop and phone chart captures, shadow comparisons, and final measurements](sleep-voyage-v3/checkpoint-c/README.md#voyage-chart)

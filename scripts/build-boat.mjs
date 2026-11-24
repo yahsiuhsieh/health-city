@@ -1,6 +1,8 @@
+import { deckSockets as sockets } from "../src/scene/sleep/deck-sockets.ts";
 import { mkdir, writeFile } from "node:fs/promises";
 import * as THREE from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
 // Editable source for the representative cargo boat. One unit equals one metre.
@@ -39,7 +41,7 @@ function mesh(shape, material, at, name = "", parent = boat) {
 function box(size, at, material, radius = .035, name = "", parent = boat) {
   const corner = Math.min(radius, Math.min(...size) * .45);
   const key = "box:" + size.join(",") + ":" + corner;
-  return mesh(geometry(key, () => cityBerth ? new THREE.BoxGeometry(...size) : new RoundedBoxGeometry(...size, 2, corner)), material, at, name, parent);
+  return mesh(geometry(key, () => cityBerth ? new THREE.BoxGeometry(...size) : new RoundedBoxGeometry(...size, 1, corner)), material, at, name, parent);
 }
 function cylinder(radius, height, at, material, name = "", parent = boat) {
   const key = "cylinder:" + radius + ":" + height;
@@ -61,146 +63,135 @@ function ring(radius, thickness, at, material, parent = boat) {
   return mesh(geometry(key, () => new THREE.TorusGeometry(radius, thickness, cityBerth ? 5 : 8, cityBerth ? 12 : 20)), material, at, "", parent);
 }
 
-const controls = [[4.7, 0], [4.25, .75], [3.1, 1.24], [1.6, 1.43], [-2.75, 1.43],
-  [-3.65, 1.18], [-4.02, .63], [-4.02, -.63], [-3.65, -1.18], [-2.75, -1.43],
-  [1.6, -1.43], [3.1, -1.24], [4.25, -.75]];
-const outlineCurve = new THREE.CatmullRomCurve3(controls.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, "centripetal");
-const outline = outlineCurve.getPoints(64).slice(0, -1);
-const sheer = x => 1.14 + Math.pow(Math.max(0, x - 1.5) / 3.2, 1.7) * .23
-  + Math.pow(Math.max(0, -x - 2.7) / 1.5, 2) * .08;
-
-// Rounded waterline and a raised bow preserve the cargo vessel's silhouette.
-const vertices = [], indices = [], plateColors = [];
-const rings = [
-  ...(cityBerth ? [{ scale: .10, y: -.94, color: "#432e2c" }, { scale: .58, y: -.78, color: "#623531" }] : []),
-  { scale: .73, y: -.65, color: "#624138" },
-  ...(cityBerth ? [{ scale: .93, y: -.15, color: "#503532" }] : []),
-  { scale: .94, y: .03, color: "#803e32" },
-  { scale: .985, y: .62, color: "#a24a37" },
-  { scale: 1, y: null, color: "#ad5540" },
-];
-for (const [row, band] of rings.entries()) {
-  for (const [i, point] of outline.entries()) {
-    vertices.push(point.x * band.scale, band.y ?? sheer(point.x), point.z * band.scale);
-    const color = new THREE.Color(band.color).multiplyScalar(.98 + Math.sin(i * 1.7 + row * 2.1) * .035);
-    plateColors.push(color.r, color.g, color.b);
+// Hull stations define the beam at the deck. The underside narrows to the keel.
+const stations = [[10,0],[8.2,1.4],[5.5,2.43],[2.6,2.78],[-4.9,2.78],
+  [-7.7,2.45],[-9.55,1.55],[-9.94,.72],[-9.94,-.72],[-9.55,-1.55],
+  [-7.7,-2.45],[-4.9,-2.78],[2.6,-2.78],[5.5,-2.43],[8.2,-1.4]];
+const sections = new THREE.CatmullRomCurve3(stations.map(([x,z])=>new THREE.Vector3(x,0,z)),true);
+const outline = sections.getPoints(cityBerth?72:120).slice(0,-1);
+// Allow for the rubbing strake when setting the overall dimensions.
+const extents=new THREE.Box3().setFromPoints(outline);
+for(const p of outline){
+  p.x=(p.x-(extents.min.x+extents.max.x)/2)*19.87/(extents.max.x-extents.min.x);
+  p.z*=5.47/(extents.max.z-extents.min.z);
+  // Parallel sides preserve deck width along the entire wheelhouse.
+  const midship=THREE.MathUtils.smoothstep(p.x,-8,-5.9)*(1-THREE.MathUtils.smoothstep(p.x,2.8,5.6));
+  p.z=THREE.MathUtils.lerp(p.z,Math.sign(p.z)*2.77,midship);
+}
+const sheer = x => 1.32 + .45*Math.max(0,(x-4)/6)**2 + .16*Math.max(0,(-x-6)/4)**2;
+const rings = [[.12,-1.72,"#422f2c"],[.65,-1.4,"#58352f"],[.91,-.43,"#683d34"],
+  [.96,.02,"#874132"],[.985,.66,"#a04b39"],[1,null,"#ae5540"]];
+const vertices=[], colorsHull=[], indices=[];
+for(const [row,[scale,y,tint]] of rings.entries()){
+  for(const [i,p] of outline.entries()){
+    vertices.push(p.x*(.7+.3*scale),y??sheer(p.x),p.z*scale);
+    const color=new THREE.Color(tint).multiplyScalar(.96+.05*Math.sin(i*.72+row*2));
+    colorsHull.push(color.r,color.g,color.b);
+    if(row===0)continue;
+    const n=outline.length,a=(row-1)*n+i,b=(row-1)*n+(i+1)%n;
+    indices.push(a,a+n,b,b,a+n,b+n);
   }
 }
-const count = outline.length;
-for (let row = 0; row < rings.length - 1; row++) {
-  for (let i = 0; i < count; i++) {
-    const next = (i + 1) % count;
-    const a = row * count + i, b = row * count + next;
-    indices.push(a, a + count, b, b, a + count, b + count);
+const hull=new THREE.BufferGeometry();
+hull.setAttribute("position",new THREE.Float32BufferAttribute(vertices,3));
+hull.setAttribute("color",new THREE.Float32BufferAttribute(colorsHull,3));
+hull.setIndex(indices);hull.computeVertexNormals();
+mesh(hull,"hull",[0,0,0],"cargo-hull");
+function deckSurface(scaleX,scaleZ,y,material,name){
+  const shape=new THREE.Shape(outline.map(p=>new THREE.Vector2(p.x*scaleX,-p.z*scaleZ)));
+  const g=new THREE.ShapeGeometry(shape);g.rotateX(-Math.PI/2);
+  mesh(g,material,[0,y,0],name);
+}
+deckSurface(.995,.995,1.3,"deck","open-cargo-deck");
+for(let z=-2.45;z<=2.45;z+=.27){
+  const ends=[];
+  for(let i=0;i<outline.length;i++){
+    const a=outline[i],b=outline[(i+1)%outline.length];
+    if((a.z>z)!==(b.z>z))ends.push(a.x+(b.x-a.x)*(z-a.z)/(b.z-a.z));
+  }
+  if(ends.length===2){
+    const [west,east]=ends.sort((a,b)=>a-b);
+    box([east-west-.23,.012,.015],[(west+east)/2,1.302,z],"seam",.002,"plank-joint");
   }
 }
-const hull = new THREE.BufferGeometry();
-hull.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-hull.setAttribute("color", new THREE.Float32BufferAttribute(plateColors, 3));
-hull.setIndex(indices);
-hull.computeVertexNormals();
-mesh(hull, "hull", [0, 0, 0], "cargo-hull");
-for (const y of [.44, .81]) {
-  pathTube(outline.map(point => {
-    const scale = y < .62 ? THREE.MathUtils.lerp(.94, .985, (y - .03) / .59)
-      : THREE.MathUtils.lerp(.985, 1, (y - .62) / (sheer(point.x) - .62));
-    return [point.x * scale * 1.001, y, point.z * scale * 1.001];
-  }), .007, "plateSeam", true);
+deckSurface(.736,.12,-1.72,"rail","hull-bottom");
+box([13,.16,.23],[-.3,-1.72,0],"rail",.04,"keel");
+box([.8,.88,.12],[-8.9,-.95,0],"rail",.06,"rudder");
+const propeller=new THREE.Group();propeller.name="propeller";propeller.position.set(-8.3,-1.04,0);boat.add(propeller);
+for(let i=0;i<3;i++){
+  const pivot=new THREE.Group();pivot.rotation.x=i*2*Math.PI/3;propeller.add(pivot);
+  box([.09,.43,.2],[0,.20,0],"brass",.05,"blade",pivot);
 }
-
-const deckShape = new THREE.Shape();
-outline.forEach((point, i) => i ? deckShape.lineTo(point.x * .97, -point.z * .97) : deckShape.moveTo(point.x * .97, -point.z * .97));
-deckShape.closePath();
-const deckGeometry = new THREE.ExtrudeGeometry(deckShape, {
-  depth: .08, bevelEnabled: true, bevelSize: .025, bevelThickness: .025, bevelSegments: 2,
-});
-deckGeometry.rotateX(-Math.PI / 2);
-mesh(deckGeometry, "deck", [0, 1.02, 0], "open-cargo-deck");
-for (const z of [-1.1, -.88, -.66, -.44, -.22, 0, .22, .44, .66, .88, 1.1]) {
-  box([5.65, .006, .008], [-.1, 1.106, z], "seam", .002);
+for(const [height,scale] of [[.48,.98],[.91,.992]]){
+  pathTube(outline.map(p=>[p.x*(.7+.3*scale),height,p.z*scale]),.014,"plateSeam",true);
 }
-pathTube(outline.map(p => [p.x, sheer(p.x) + .015, p.z]), .055, "cream", true);
-pathTube(outline.map(p => [p.x * .997, sheer(p.x) - .1, p.z * .997]), .024, "cream", true);
-const boardingGate = p => p.z > 0 && Math.abs(p.x - .6) < .68;
-const gateIndex = outline.findIndex(boardingGate);
-const railOutline = [...outline.slice(gateIndex), ...outline.slice(0,gateIndex)].filter(p=>!boardingGate(p));
-for (const height of [.34, .65]) {
-  pathTube(railOutline.map(p => [p.x * .985, sheer(p.x) + height, p.z * .985]), .025, "rail");
-}
-for (let i = 0; i < count; i += 4) {
-  const p = outline[i];
-  if (boardingGate(p)) continue;
-  beam([p.x * .985, sheer(p.x), p.z * .985], [p.x * .985, sheer(p.x) + .65, p.z * .985], .028, "rail");
-}
-
-// The compact aft house leaves most of the deck available for cargo.
-box([2.7, 1.38, 2.38], [-2.43, 1.82, 0], "cream", .13, "aft-house");
-box([2.96, .16, 2.65], [-2.43, 2.55, 0], "cream", .09);
-box([1.94, 1.24, 1.98], [-1.98, 3.25, 0], "cream", .12, "wheelhouse");
-box([2.23, .16, 2.27], [-1.98, 3.94, 0], "cream", .08);
-
-for (const side of [-1, 1]) {
-  for (const x of [-2.54, -1.79]) {
-    box([.62, .82, .055], [x, 3.28, side * 1.005], "frame", .07);
-    box([.49, .69, .03], [x, 3.28, side * 1.045], "glass", .045, "cabin-window");
-  }
-  for (const x of [-3.3, -2.4, -1.5]) {
-    box([.56, .62, .055], [x, 1.95, side * 1.195], "frame", .065);
-    box([.43, .49, .025], [x, 1.95, side * 1.235], "glass", .045, "cabin-window");
-  }
-  box([.54, .96, .06], [-1.47, 1.65, side * 1.205], "frame", .06);
-  box([.42, .83, .03], [-1.47, 1.65, side * 1.245], "deck", .045);
-  cylinder(.035, .12, [-1.36, 1.7, side * 1.28], "brass").rotation.x = Math.PI / 2;
-}
-for (const z of [-.64, 0, .64]) {
-  box([.06, .82, .54], [-.995, 3.28, z], "frame", .06);
-  box([.03, .68, .41], [-.955, 3.28, z], "glass", .04, "cabin-window");
-}
-for (const z of [-.5, .5]) {
-  box([.06, .76, .6], [-2.975, 3.28, z], "frame", .06);
-  box([.03, .63, .47], [-3.015, 3.28, z], "glass", .04, "cabin-window");
-}
-
-const bridgeWing = box([.94,.13,1.38], [-.68,2.575,-.39], "deck", .04, "bridge-wing");
-beam([-.25,2.64,-1.06],[-.25,3.3,-1.06],.03,"rail");
-beam([-.25,3.3,-1.06],[-1.05,3.3,-1.06],.032,"rail");
-
-// Upper deck rails and a short stair connect the two working levels.
-const upperRail = [[-3.82, 0, -1.22], [-.96, 0, -1.22], [-.96, 0, 1.22], [-3.82, 0, 1.22]];
-for (let i = 0; i < upperRail.length; i++) {
-  const a = upperRail[i], b = upperRail[(i + 1) % upperRail.length];
-  for (const y of [2.87, 3.18]) beam([a[0], y, a[2]], [b[0], y, b[2]], .024, "rail");
-  for (let step = 0; step < 4; step++) {
-    const x = THREE.MathUtils.lerp(a[0], b[0], step / 4);
-    const z = THREE.MathUtils.lerp(a[2], b[2], step / 4);
-    beam([x, 2.64, z], [x, 3.18, z], .025, "rail");
+pathTube(outline.map(p=>[p.x,sheer(p.x),p.z]),.03,"cream",true);
+for(const sign of [-1,1]){
+  // Both boarding gates interrupt the rails amidships.
+  const side=outline.filter(p=>p.z*sign>=0);
+  for(const run of [side.filter(p=>p.x<-.05),side.filter(p=>p.x>1.15)]){
+    run.sort((a,b)=>a.x-b.x);
+    for(const h of [.49,1])pathTube(run.map(p=>[p.x,sheer(p.x)+h,p.z]),.029,"rail");
+    for(let i=0;i<run.length;i+=cityBerth?3:5){
+      const p=run[i];beam([p.x,sheer(p.x),p.z],[p.x,sheer(p.x)+1,p.z],.03,"rail");
+    }
   }
 }
-for (let i = 0; i < 7; i++) {
-  box([.21, .07, .55], [-.35 - i * .14, 1.18 + i * .21, -.99], "deck", .025);
+// The wheelhouse has transparent glazing, open doors and a clear interior.
+materials.glass.transparent=true;materials.glass.opacity=.31;materials.glass.depthWrite=false;
+const house=new THREE.Group();house.name="wheelhouse";boat.add(house);
+const seatX=-2.65,roof=3.76;
+box([4.32,.16,3.72],[-3.4,3.68,0],"cream",.07,"roof",house);
+function windowPanel(x,z,w,side){
+  const size=side?[w,1.03,.024]:[.034,1.03,w];
+  box(size,[x,2.97,z],"glass",.016,"cabin-window",house);
+  const g=mergeGeometries(Array.from({length:7},(_,i)=>
+    new THREE.BoxGeometry(size[0],.129,size[2]).translate(0,-.071-i*.147,0)));
+  const shutter=mesh(g,"seam",[x+(side?0:Math.sign(x+3.4)*.05),3.49,z+(side?-Math.sign(z)*.028:0)],"cabin-shutter",house);
+  shutter.scale.y=.06;
 }
-for (const z of [-.66, -1.32]) {
-  beam([-.24, 1.26, z], [-1.34, 2.84, z], .025, "rail");
+for(const z of [-1.8125,1.8125]){
+  for(const [x,w] of [[-4.86,1.28],[-2.28,1.96]]){
+    box([w,1.15,.025],[x,1.875,z],"cream",.025,"side-wall",house);
+    for(const edge of [-1,1])box([.085,1.15,.025],[x+edge*(w-.085)/2,3.02,z],"cream",.018,"window-post",house);
+    windowPanel(x,z,w-.14,true);
+    box([w,.09,.075],[x,2.44,z-Math.sign(z)*.03],"deck",.02,"window-sill",house);
+    box([w,.11,.055],[x,1.42,z-Math.sign(z)*.02],"seam",.02,"house-trim",house);
+  }
+  box([1.0,.22,.10],[-3.72,3.49,z],"cream",.02,"door-header",house);
 }
+for(const x of [-5.545,-1.255]){
+  box([.09,1.15,3.6],[x,1.875,0],"cream",.03,"end-wall",house);
+  for(let i=0;i<5;i++){
+    const z=-1.44+.72*i;
+    windowPanel(x,z,.62,false);
+    box([.095,1.16,.07],[x,3.02,z-.35],"cream",.02,"window-post",house);
+  }
+}
+box([1.02,.62,1.6],[-1.84,1.62,0],"frame",.08,"instrument-console");
+for(const z of [-.43,0,.43])cylinder(.11,.05,[-1.88,1.96,z],"brass","gauge");
+ring(.29,.034,[-2.35,2.18,0],"rail").rotation.y=Math.PI/2;
+for(let i=0;i<4;i++){
+  const a=i*Math.PI/2;beam([-2.35,2.18,0],[-2.35,2.18+.28*Math.cos(a),.28*Math.sin(a)],.017,"brass");
+}
+cylinder(.12,.46,[seatX-.38,1.53,0],"frame");
+box([.52,.13,.56],[seatX-.38,1.83,0],"deck",.06,"helm-seat");
+box([.11,.47,.56],[seatX-.64,2.05,0],"deck");
+box([.85,.10,1.05],[-4.87,2.04,.92],"deck",.04,"chart-table");
+cylinder(.09,.71,[-4.87,1.67,.92],"frame");
+cylinder(.12,.22,[-5.09,2.2,1.19],"brass","chart-lamp");
+for(const side of [-1,1]){
+  box([2.35,.12,1],[-3.4,roof-.06,side*2.30],"deck",.045,side<0?"bridge-wing":"bridge-wing-starboard");
+  for(const dx of [-1.1,0,1.1])beam([-3.4+dx,roof,side*2.76],[-3.4+dx,roof+1,side*2.76],.04,"rail");
+  beam([-4.55,roof+1,side*2.76],[-2.25,roof+1,side*2.76],.045,"rail");
+}
+for(const z of [-.36,.36])beam([-5.71,1.3,z],[-5.71,roof+.55,z],.035,"rail");
+for(let y=1.53;y<roof;y+=.29)beam([-5.71,y,-.36],[-5.71,y,.36],.034,"rail");
 
-// Large hatch covers, timber framing, and a few handles establish the open hold.
-const hatches = new THREE.Group();
-hatches.name = "cargo-hatches";
-boat.add(hatches);
-for (const x of [-.02, 1.42]) {
-  box([1.32, .28, 1.7], [x, 1.26, .12], "seam", .04, "", hatches);
-  box([1.36, .09, 1.76], [x, 1.43, .12], "hatch", .03, "", hatches);
-  for (const offset of [-.49, -.24, 0, .24, .49]) {
-    box([.008, .008, 1.67], [x + offset, 1.479, .12], "seam", .002, "", hatches);
-  }
-  for (const offset of [-.43, .43]) {
-    box([.055, .017, 1.7], [x + offset, 1.49, .12], "frame", .006, "", hatches);
-  }
-  for (const z of [-.55, .8]) {
-    beam([x - .13, 1.51, z], [x + .13, 1.51, z], .018, "rail", hatches);
-  }
-}
-
+const hatches=new THREE.Group();hatches.name="cargo-hatches";boat.add(hatches);
+box([3.2,.32,2.4],[3.25,1.47,0],"seam",.055,"coaming",hatches);
+for(let i=0;i<8;i++)box([.37,.14,2.34],[1.85+i*.4,1.69,0],"hatch",.035,"timber-cover",hatches);
+for(const x of [2.24,4.24])box([.075,.045,2.36],[x,1.784,0],"rail",.01,"hatch-strap",hatches);
 // A fixed cargo derrick provides a recognizable working silhouette.
 const crane = new THREE.Group();
 crane.name = "cargo-crane";
@@ -230,122 +221,84 @@ for (let i = 0; i < 8; i++) {
 }
 beam([3.23, 1.7, -.25], [2.65, 2.24, -.63], .012, "rail", crane);
 
-// A banded stack, rigged mast, and lamps complete the aft silhouette.
-cylinder(.27, 1.14, [-3.32, 3.23, .35], "stack");
-cylinder(.27, .24, [-3.32, 3.92, .35], "red");
-cylinder(.27, .24, [-3.32, 4.16, .35], "cream");
-cylinder(.27, .24, [-3.32, 4.4, .35], "stack");
-cylinder(.3, .1, [-3.32, 4.57, .35], "rail");
-beam([-2.06, 4.04, .1], [-2.06, 5.36, .1], .034, "brass");
-beam([-2.58, 4.94, .1], [-1.54, 4.94, .1], .025, "brass");
-for (const [x, z] of [[-2.92, -.82], [-1.08, -.82], [-2.92, .82], [-1.08, .82]]) {
-  beam([-2.06, 5.12, .1], [x, 4.04, z], .008, "rail");
-}
-cylinder(.09, .16, [-2.06, 5.34, .1], "cream", "mast-lamp");
-cylinder(.12, .1, [-2.06, 5.46, .1], "rail");
-const searchlight = cylinder(.13, .19, [-1.16, 4.16, -.65], "brass");
-searchlight.rotation.z = Math.PI / 2;
-const lens = cylinder(.1, .02, [-1.05, 4.16, -.65], "cream", "mast-lamp");
-lens.rotation.z = Math.PI / 2;
-for (const side of [-1, 1]) {
-  const light = box([.16, .12, .16], [-1.22, 4.08, side * 1.01], "coral", .035, "navigation-lamp");
-  light.material = new THREE.MeshStandardMaterial({
-    color: side < 0 ? "#bc5947" : "#79a98c", roughness: .5,
-    emissive: side < 0 ? "#dc624b" : "#70bc92", emissiveIntensity: .1,
-  });
-}
 
-// Life rings, aft portholes, anchors, mooring equipment, and sparse rope coils.
-for (const side of [-1, 1]) {
-  ring(.29, .075, [-1.66, 2.09, side * 1.28], "coral");
-  for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
-    const patch = box([.12, .15, .08], [-1.66 + Math.sin(angle) * .29, 2.09 + Math.cos(angle) * .29, side * 1.29], "cream", .02);
-    patch.rotation.z = -angle;
+crane.scale.setScalar(1.45);crane.position.set(2.1,-.36,.53);
+for(const [y,h,m] of [[4.32,1.12,"stack"],[5.07,.38,"cream"],[5.49,.46,"red"],[5.83,.22,"stack"]])
+  cylinder(.37,h,[-4.78,y,.61],m,"funnel");
+const mastX=-2.96,mastTop=roof+4.5;
+beam([mastX,roof,0],[mastX,mastTop,0],.065,"brass");
+beam([mastX,7.05,-1],[mastX,7.05,1],.045,"brass");
+for(const x of [-5.22,-1.6])for(const z of [-1.55,1.55])
+  beam([mastX,7.69,0],[x,roof,z],.013,"rail");
+for(const side of [-1,1]){
+  const endX=side<0?-1.13:-5.67;
+  ring(.35,.08,[endX,1.96,side*1.11],"coral").rotation.y=Math.PI/2;
+  for(let i=0;i<4;i++){
+    const a=i*Math.PI/2;
+    box([.16,.18,.12],[endX,1.96+.35*Math.cos(a),side*1.11+.35*Math.sin(a)],"cream",.02).rotation.x=a;
   }
-  for (const x of [-3.35, -2.48, -1.55]) {
-    ring(.105, .025, [x, .77, side * 1.39], "brass");
-    const glass = mesh(geometry("porthole", () => new THREE.CircleGeometry(.09, 16)), "glass", [x, .77, side * 1.392]);
-    if (side < 0) glass.rotation.y = Math.PI;
-  }
-  ring(.09, .03, [4.05, .95, side * .93], "rail");
-  if(side===1)continue;
-  beam([4.05, .87, side * .93], [4.05, .36, side * .93], .034, "rail");
-  pathTube([[3.82, .57, side * .93], [3.88, .4, side * .93], [4.05, .33, side * .93],
-    [4.22, .4, side * .93], [4.28, .57, side * .93]], .032, "rail");
 }
-for (const x of [-3.65, 3.8]) {
-  cylinder(.085, .24, [x, 1.29, 0], "rail");
-  beam([x, 1.4, -.21], [x, 1.4, .21], .05, "rail");
-}
-for (const radius of [.18, .135, .09]) {
-  ring(radius, .018, [3.5, 1.13, .55], "rope").rotation.x = Math.PI / 2;
-}
-
-{
-  const windows=boat.children.filter(child=>child.name==="cabin-window");
-  for(const [i,window] of windows.entries()){
-    window.geometry.computeBoundingBox();
-    const dims=window.geometry.boundingBox.getSize(new THREE.Vector3());
-    const sideways=dims.x>dims.z;
-    const [x,y,z]=window.position.toArray();
-    const exterior=sideways?Math.sign(z):(x> -2?1:-1);
-    const thick=.035,top=y+dims.y/2;
-    const at=[x+(sideways?0:exterior*.045),top,z+(sideways?exterior*.045:0)];
-    box(sideways?[dims.x+.045,.07,.09]:[.09,.07,dims.z+.045],at,"frame",.01,"shutter-box");
-    const panel=new THREE.BoxGeometry(sideways?dims.x:thick,dims.y,sideways?thick:dims.z,1,12,1).translate(0,-dims.y/2,0);
-    const rgb=[],pos=panel.attributes.position;
-    for(let k=0;k<pos.count;k++){const line=Math.round(-12*pos.getY(k)/dims.y)%2;const c=new THREE.Color(line?"#8f7a55":"#b9a27a");rgb.push(c.r,c.g,c.b);}
-    panel.setAttribute("color",new THREE.Float32BufferAttribute(rgb,3));
-    const shutter=mesh(panel,"hull",at,"cabin-shutter-"+i);shutter.scale.y=.06;
+for(const sign of [-1,1]){
+  for(const px of [-6.2,-4.2,-2.2]){
+    const rim=outline.reduce((best,p)=>p.z*sign>0 && Math.abs(p.x-px)<Math.abs(best.x-px)?p:best,outline[0]);
+    const z=rim.z*.993;
+    const lens=mesh(new THREE.CircleGeometry(.16,16),"frame",[rim.x,.84,z],"porthole");
+    if(sign<0)lens.rotation.y=Math.PI;
+    ring(.165,.035,[rim.x,.84,z+sign*.012],"brass");
   }
-  const anchor=new THREE.Group();anchor.name="bow-anchor";anchor.position.set(4.05,.78,1.02);boat.add(anchor);
-  beam([0,.13,0],[0,-.29,0],.034,"rail",anchor);
-  ring(.062,.018,[0,.16,0],"rail",anchor);
-  for(const sign of [-1,1]){
-    beam([0,-.29,0],[sign*.15,-.22,0],.04,"rail",anchor);
-    const fluke=mesh(new THREE.ConeGeometry(.087,.19,4),"rail",[sign*.15,-.15,0],"fluke",anchor);
-    fluke.rotation.z=-sign*.25;
-  }
-  mesh(new THREE.SphereGeometry(.18,10,7),"rubber",[-2.06,5.12,.23],"anchor-ball");
-  cylinder(.071,.14,[3.72,1.65,.4],"cream","anchor-light");
 }
-if (cityBerth) {
-  // Preserve the reviewed deck arrangement on the longer 16 m hull.
-  boat.scale.set(1.80,1.42,1.67);
-  const sole = new THREE.Shape();
-  outline.forEach((p,i) => i ? sole.lineTo(p.x*.10,-p.z*.10) : sole.moveTo(p.x*.10,-p.z*.10));
-  const bottom=new THREE.ShapeGeometry(sole);
-  bottom.rotateX(Math.PI/2);
-  mesh(bottom,"rail",[0,-.94,0],"hull-bottom");
-  box([5.75,.26,.14],[-.25,-.94,0],"rail",.02,"keel");
-  box([.40,.58,.075],[-3.90,-.69,0],"rail",.03,"rudder");
-  const prop=new THREE.Group();prop.name="propeller";prop.position.set(-3.68,-.73,0);boat.add(prop);
-  for(let i=0;i<3;i++){
-    const blade=box([.07,.24,.11],[0,.13,0],"brass",.02,"blade");
-    const pivot=new THREE.Group();pivot.rotation.x=i*2*Math.PI/3;pivot.add(blade);prop.add(pivot);
-  }
-  const socket = new THREE.Object3D();
-  socket.name = "captain-socket";
-  bridgeWing.geometry.computeBoundingBox();
-  socket.position.y = bridgeWing.geometry.boundingBox.max.y;
-  socket.rotation.y = Math.PI / 2;
-  bridgeWing.add(socket);
-  // Bake contact shading into the reusable geometry, including the cabin recesses.
-  const visited=new Set();
-  boat.traverse(node=>{
-    if(!node.isMesh || visited.has(node.geometry))return;
-    visited.add(node.geometry);
-    const g=node.geometry,p=g.getAttribute("position"),n=g.getAttribute("normal");
-    if(!n || g.hasAttribute("color"))return;
-    g.computeBoundingBox();const lower=g.boundingBox.min.y,span=Math.max(.01,g.boundingBox.max.y-lower);
-    const rgb=[];
-    for(let i=0;i<p.count;i++){
-      const ao=(.84+.16*(p.getY(i)-lower)/span)*(n.getY(i)<-.4?.8:1);
-      rgb.push(ao,ao,ao);
+for(const z of [-1,1]){cylinder(.13,.39,[-8.1,1.49,z],"rail","aft-bitt");cylinder(.18,.07,[-8.1,1.71,z],"rail");}
+for(const r of [.46,.38,.30,.22])ring(r,.037,[-7.1,1.35,.92],"rope").rotation.x=Math.PI/2;
+const anchor=new THREE.Group();anchor.name="bow-anchor";anchor.position.set(8.05,.86,1.37);boat.add(anchor);
+beam([0,.2,0],[0,-.48,0],.05,"rail",anchor);ring(.09,.025,[0,.23,0],"rail",anchor);
+for(const sign of [-1,1]){
+  beam([0,-.48,0],[sign*.24,-.32,0],.055,"rail",anchor);
+  mesh(new THREE.ConeGeometry(.13,.27,4),"rail",[sign*.24,-.23,0],"fluke",anchor);
+}
+mesh(new THREE.SphereGeometry(.26,12,8),"rubber",[1.25,5.48,0],"anchor-ball");
+beam([mastX,7.75,0],[7.8,2.35,0],.014,"rail");
+function socket(name,at){
+  const n=new THREE.Object3D();n.name=name;n.position.set(...at);boat.add(n);return n;
+}
+for(const [name,at] of Object.entries(sockets))socket("captain-"+name,at);
+socket("captain-socket",sockets["wing-port"]).rotation.y=Math.PI/2;
+socket("bow-line-fairlead",[8,1.6,-1.25]);socket("stern-line-fairlead",[-8,1.6,-1.85]);
+socket("anchor-hawse",[8.05,1.12,1.37]);socket("stern",[-9.94,.04,0]);
+for(const [name,at,color] of [
+  ["masthead",[mastX,mastTop,0],"#fff3d5"],["port",[-2.12,3.84,-1.86],"#fa3b28"],
+  ["starboard",[-2.12,3.84,1.86],"#38cb7a"],["stern",[-9.53,2.27,0],"#fff3d5"],
+  ["anchor",[7.6,2.75,-.38],"#fff3d5"],
+]){
+  const n=socket("light-"+name,at);
+  const lens=cylinder(.105,.19,[0,0,0],"cream",name+"-light",n);
+  lens.material=new THREE.MeshStandardMaterial({color,emissive:color,emissiveIntensity:1.8});
+}
+// Combine fixed fittings within each assembly for the runtime model.
+if(cityBerth){
+  const assemblies=[];
+  boat.traverse(n=>{if(n.isGroup)assemblies.push(n);});
+  const repeating=new Set(["plank-joint","window-post","window-sill","house-trim","timber-cover","hatch-strap","side-wall","end-wall"]);
+  for(const parent of assemblies){
+    const groups=new Map();
+    for(const part of parent.children){
+      if(!part.isMesh || (part.name!==part.material.name && !repeating.has(part.name)))continue;
+      const parts=groups.get(part.material)??[];
+      parts.push(part);groups.set(part.material,parts);
     }
-    g.setAttribute("color",new THREE.Float32BufferAttribute(rgb,3));
-  });
-  boat.traverse(node=>{if(node.isMesh)node.material.vertexColors=true;});
+    for(const [material,parts] of groups){
+      if(parts.length<2)continue;
+      const allIndexed=parts.every(part=>part.geometry.index);
+      const shapes=parts.map(part=>{
+        part.updateMatrix();
+        const g=!allIndexed && part.geometry.index?part.geometry.toNonIndexed():part.geometry.clone();
+        g.applyMatrix4(part.matrix);
+        return g;
+      });
+      const combined=new THREE.Mesh(mergeGeometries(shapes),material);
+      combined.name="fixed-"+material.name;parent.remove(...parts);parent.add(combined);
+      for(const g of shapes)g.dispose();
+    }
+  }
 }
 globalThis.FileReader = class {
   readAsArrayBuffer(blob) {

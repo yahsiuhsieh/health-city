@@ -1,13 +1,15 @@
-import type { Plane } from "three";
+import {useFrame} from "@react-three/fiber";
+import type {Replay} from "../core/replay.ts";
+import type { MeshStandardMaterial,Plane } from "three";
 import { DRY_LAYER, TRANSPARENT_MASK } from "./ocean/layers.ts";
-import { useEffect,useMemo } from "react";
+import { useEffect,useMemo,useRef } from "react";
 import { TorusGeometry,BoxGeometry,BufferGeometry,CanvasTexture,Color,CylinderGeometry,ExtrudeGeometry,Float32BufferAttribute,IcosahedronGeometry,Matrix4,Quaternion,Euler,Shape,SRGBColorSpace,Vector3 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Point } from "./loop-path.ts";
-import { DOCK,PAVING_Y } from "./harbor-layout.ts";
-import {breakwaterArms,cargoQuay} from "./city/harbor-plan.ts";
+import { DOCK,PAVING_Y,workingLines } from "./harbor-layout.ts";
+import {armMarks,breakwaterArms,cargoQuay,workingQuay} from "./city/harbor-plan.ts";
 import { port } from "./port-layout.ts";
-import { harborEdge } from "./coastline.ts";
+import { harborWorks,harborEdge } from "./coastline.ts";
 type XYZ=[number,number,number];
 const pierConcrete="#a7a69a";
 const stone="#d5c8af",trim="#eddabb",iron="#485754",wood="#966a47";
@@ -93,7 +95,20 @@ function districtGeometry() {
     box(x,.40,60+sign*3.2,.7,.32,5.4,"#a99274");
     add(cylinder,[x,.38,60+sign*5.6],[.20,1.5,.20],iron);
   }
-  for(const arm of breakwaterArms){
+  const {start:west,end:east,edge:face,back,top:deck}=workingQuay;
+  box((west+east)/2,deck/2-2,(back+face)/2,east-west,deck+4,face-back,pierConcrete);
+  apron(west+.15,east-.15,back+.25,face-.36,deck);
+  box((west+east)/2,deck+.045,face-.18,east-west,.09,.36,"#c9c5b7");
+  for(let x=west+2;x<east;x+=4) box(x,.65,face+.12,.72,1.45,.24,"#404746");
+  const bollards=new Set<number>(workingLines.map(line=>line.bollardX));
+  for(let x=west+2;x<east;x+=8) bollards.add(x);
+  for(const x of bollards){
+    add(cylinder,[x,deck+.17,face-.6],[.34,.34,.34],iron);
+    add(cylinder,[x,deck+.37,face-.6],[.46,.08,.46],iron);
+  }
+  for(const [index,segment] of harborWorks.entries()){
+    if(segment.type!=="revetment")continue;
+    const arm=segment.points;
     for(let j=1;j<arm.length;j++){
       const [ax,az]=arm[j-1]!,[bx,bz]=arm[j]!,dx=bx-ax,dz=bz-az,length=Math.hypot(dx,dz),yaw=Math.atan2(dx,dz);
       add(unitBox,[(ax+bx)/2,-.72,(az+bz)/2],[3.5,3.1,length+.8],"#777d72",[0,yaw,0]);
@@ -108,7 +123,7 @@ function districtGeometry() {
     const [x,z]=arm[arm.length-1]!;
     add(cylinder,[x,1.1,z],[3.65,.8,3.65],pierConcrete);
     add(cylinder,[x,3.5,z],[1.45,4,1.45],"#e8e1cc");
-    add(cylinder,[x,4.2,z],[1.48,.94,1.48],arm===breakwaterArms[0]?"#487b65":"#ac5e4b");
+    add(cylinder,[x,4.2,z],[1.48,.94,1.48],armMarks[index]==="green"?"#487b65":"#ac5e4b");
     add(cylinder,[x,5.58,z],[1.85,.19,1.85],iron);
     add(cylinder,[x,6.43,z],[1.40,.18,1.40],iron);
   }
@@ -203,14 +218,20 @@ export function SignText({text,position,yaw,width,height}:{text:string;position:
   useEffect(()=>()=>texture.dispose(),[texture]);
   return <mesh layers-mask={TRANSPARENT_MASK} position={position} rotation-y={yaw}><planeGeometry args={[width,height]} /><meshBasicMaterial map={texture} transparent depthWrite={false}/></mesh>;
 }
-export function HarborBlock({night,cutout}:{night:boolean;cutout?:Plane[]}){
+function HarborBeacon({night,replay,index}:{night:boolean;replay:Replay;index:number}){
+  const material=useRef<MeshStandardMaterial>(null);
+  const arm=breakwaterArms[index]!,[x,z]=arm[arm.length-1]!;
+  const color=armMarks[index]==="green"?"#58c28f":"#ed5748";
+  useFrame(()=>{
+    if(material.current) material.current.emissiveIntensity=night && (replay.read().seconds/190)%4<.8?2.5:0;
+  });
+  return <mesh position={[x,6,z]}><cylinderGeometry args={[.48,.48,.7,12]}/><meshStandardMaterial ref={material} color={color} emissive={color} emissiveIntensity={0}/></mesh>;
+}
+export function HarborBlock({night,replay,cutout}:{night:boolean;replay:Replay;cutout?:Plane[]}){
   const geometry=useMemo(districtGeometry,[]);
   useEffect(()=>()=>Object.values(geometry).forEach(g=>g.dispose()),[geometry]);
   return <group name="Harbor quay and piers">
-    {breakwaterArms.map((arm,i)=>{
-      const [x,z]=arm[arm.length-1]!,color=i===0?"#55ae80":"#d46048";
-      return <mesh key={i} position={[x,6,z]}><cylinderGeometry args={[.48,.48,.7,12]}/><meshStandardMaterial color={color} emissive={color} emissiveIntensity={night?1.5:.14}/></mesh>;
-    })}
+    {breakwaterArms.map((_,i)=><HarborBeacon key={i} index={i} night={night} replay={replay}/>)}
     <mesh geometry={geometry.waterfront} castShadow receiveShadow><meshStandardMaterial clippingPlanes={cutout??null} clipIntersection={!!cutout} clipShadows={!!cutout} vertexColors roughness={.88}/></mesh>
     <mesh layers-mask={1 << DRY_LAYER} geometry={geometry.fabric} castShadow receiveShadow><meshStandardMaterial clippingPlanes={cutout??null} clipIntersection={!!cutout} clipShadows={!!cutout} vertexColors roughness={.88}/></mesh>
     <mesh layers-mask={1 << DRY_LAYER} geometry={geometry.windows} receiveShadow><meshStandardMaterial clippingPlanes={cutout??null} clipIntersection={!!cutout} clipShadows={!!cutout} vertexColors roughness={.4} emissive={night?"#dca966":"#000000"} emissiveIntensity={.68}/></mesh>

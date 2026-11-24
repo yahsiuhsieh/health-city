@@ -1,5 +1,7 @@
 # Sleep Voyage and Island Redesign Plan
 
+**Superseded by the [tropical voyage plan](sleep-voyage-v3.md).** The sections below record the earlier design.
+
 Date: November 23, 2026. Audience: the implementing coding agent.
 
 This plan replaces the current sleep island and the circular sleep voyage. It records decisions that the user made on November 23, 2026. Read the whole plan before you change code. Follow the phase order in [section 17](#17-implementation-phases).

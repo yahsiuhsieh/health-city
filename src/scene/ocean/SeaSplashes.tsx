@@ -84,16 +84,15 @@ export function SeaSplashes({hasVoyage,preview,night}:{hasVoyage:boolean;preview
         near=Math.min(near,point.z);far=Math.max(far,point.z);
       }
       const candidates:SplashEvent[]=[], seen=new Set<string>();
-      for(let x=Math.floor(Math.max(-500,left)/CELL_SIZE)-1;x<=Math.floor(Math.min(500,right)/CELL_SIZE)+1;x++){
-        for(let z=Math.floor(Math.max(-500,near)/CELL_SIZE)-1;z<=Math.floor(Math.min(500,far)/CELL_SIZE)+1;z++){
+      for(let x=Math.floor(left/CELL_SIZE)-1;x<=Math.floor(right/CELL_SIZE)+1;x++){
+        for(let z=Math.floor(near/CELL_SIZE)-1;z<=Math.floor(far/CELL_SIZE)+1;z++){
           const key=x+","+z;seen.add(key);
           let events=region.cells.get(key);
           if(!events){
-            const depthAt=(px:number,pz:number)=>ocean.bed.sampleAt(px,pz,1)<0?0:ocean.bed.depthAt(px,pz);
+            const depthAt=ocean.floorAt;
             events=scheduledSplashes({x,z},depthAt,region.paths);region.cells.set(key,events);
           }
           for(const e of events){
-            if(Math.abs(e.x)>500 || Math.abs(e.z)>500)continue;
             point.set(e.x,WATER_LEVEL,e.z).applyMatrix4(region.projection);
             if(Math.abs(point.x)<1.03 && Math.abs(point.y)<1.03)candidates.push(e);
           }

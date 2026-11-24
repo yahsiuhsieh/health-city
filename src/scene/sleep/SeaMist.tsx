@@ -2,7 +2,8 @@ import { useMemo,useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Color,DoubleSide,Group,InstancedMesh,Object3D } from "three";
 import { useLayoutEffect } from "react";
-import { PIER_HEAD } from "./route.ts";
+import { destination } from "./island-preview.ts";
+import { JETTY_HEAD } from "./route.ts";
 import { TRANSPARENT_LAYER } from "../ocean/layers.ts";
 import { useOcean } from "../ocean/OceanEnvironment.tsx";
 
@@ -13,8 +14,9 @@ export function SeaMist(){
     dummy.position.set(0,.5+i*.31,0);dummy.rotation.set(-Math.PI/2,0,i*2.4);dummy.updateMatrix();ref.current!.setMatrixAt(i,dummy.matrix);
   }ref.current!.instanceMatrix.needsUpdate=true;},[]);
   useFrame(()=>{if(group.current)group.current.visible=uniforms.uRevealS.value>=0 && uniforms.uIslandReveal.value<1;});
-  return <group ref={group} position={[PIER_HEAD[0]+17,0,PIER_HEAD[1]]} name="Sea mist"><instancedMesh ref={ref} args={[undefined,undefined,9]} layers-mask={1<<TRANSPARENT_LAYER} renderOrder={4}>
-    <planeGeometry args={[60,60]}/><shaderMaterial uniforms={uniforms} transparent depthWrite={false} side={DoubleSide} forceSinglePass
+  const {reef}=destination();
+  return <group ref={group} position={[JETTY_HEAD[0]-15,0,reef.center[1]]} name="Sea mist"><instancedMesh ref={ref} args={[undefined,undefined,9]} layers-mask={1<<TRANSPARENT_LAYER} renderOrder={4}>
+    <planeGeometry args={[reef.bounds.right-reef.bounds.left+50,reef.bounds.top-reef.bounds.bottom+45]}/><shaderMaterial uniforms={uniforms} transparent depthWrite={false} side={DoubleSide} forceSinglePass
       vertexShader={`varying vec2 coord;varying float layer;void main(){coord=uv*2.-1.;layer=instanceMatrix[3].y;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}`}
       fragmentShader={`uniform float oceanTime,nightAmount,uIslandReveal;uniform vec3 dayMist,nightMist;varying vec2 coord;varying float layer;
         float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.54);}

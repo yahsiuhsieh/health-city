@@ -4,6 +4,7 @@ import { BufferGeometry, Color, DoubleSide, DynamicDrawUsage, Float32BufferAttri
   Mesh, ShaderMaterial } from "three";
 import type { Replay } from "../../core/replay.ts";
 import { TRANSPARENT_LAYER, WATER_LEVEL } from "./layers.ts";
+import { useOcean } from "./OceanEnvironment.tsx";
 import { noiseGLSL } from "./shore-shader.ts";
 import { TRAIL_LENGTH } from "./wake.ts";
 import type { WakeSource, WakeSample } from "./wake.ts";
@@ -48,7 +49,7 @@ function positionRibbon(geometry:BufferGeometry,sample:WakeSample) {
     const sign=i%2?1:-1, bow=i<2;
     for(let j=0;j<4;j++) {
       const t=Math.floor(j/2), side=j%2?1:-1;
-      const along=bow?15-2.2*t:-14*t;
+      const along=bow?19.1-3.4*t:-14*t;
       const across=sign*(bow?.38+beam*.26*t:beam*.37+14*t*Math.tan(19.5*Math.PI/180))+side*(bow?.34:.30);
       pos.setXYZ(extras+i*4+j,stern.x+along*dx-across*dz,WATER_LEVEL+.014,stern.z+along*dz+across*dx);
     }
@@ -66,7 +67,8 @@ const vertexShader=`
 `;
 const fragmentShader=`
   uniform vec3 foam;
-  uniform float strength, night, deep, rem;
+  uniform float strength, night, deep, rem, oceanTime;
+  uniform vec3 plankton;
   varying vec3 coord;
   varying vec2 waterPoint;
   ${noiseGLSL}
@@ -83,29 +85,37 @@ const fragmentShader=`
       float core=(1.-smoothstep(2.,6.,t))*(1.-smoothstep(.45,.66,side));
       alpha=edge*max(patches*(.26+.64*lace(p))*exp(-t/65.)*(1.-smoothstep(48.,55.,t)),
         core*.9*(.5+.5*grain));
-      color=mix(color,vec3(.19,.97,.81),rem*night*core*.8);
+
     } else if(coord.z<1.5){
       float crest=abs(coord.x-.55*sin(t*3.14159));
       alpha=.6*(1.-smoothstep(.05,.65,crest))*sin(t*3.14159);
     } else {
       alpha=.12*(1.-smoothstep(.1,.85,side))*(1.-t)*(.45+.55*grain);
     }
-    gl_FragColor=vec4(color,alpha*strength*mix(1.,.55,night));
+    vec2 cell=floor(waterPoint*11.);
+    float seed=fract(sin(dot(cell,vec2(37.2,91.8)))*4375.31);
+    float pulse=smoothstep(.36,.95,sin(oceanTime*9.+seed*24.));
+    float dotMask=1.-smoothstep(.15,.46,length(fract(waterPoint*11.)-.5));
+    float range=coord.z<.5?1.-smoothstep(1.,6.,t):coord.z<1.5?1.:1.-smoothstep(0.,6./14.,t);
+    float sparkle=rem*night*range*dotMask*step(.56,seed)*pulse;
+    color=mix(color,plankton,sparkle);
+    gl_FragColor=vec4(color,max(alpha*mix(1.,.55,night),sparkle)*strength);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }
 `;
 
 export function BoatWake({source,replay,night}:{source:WakeSource;replay:Replay;night:boolean}) {
+  const ocean=useOcean();
   const lastTime=useRef<number>(NaN);
   const wake=useMemo(()=>{
-    const uniforms={foam:{value:new Color()},strength:{value:0},night:{value:0},deep:{value:0},rem:{value:0}};
+    const uniforms={foam:{value:new Color()},strength:{value:0},night:ocean.uniforms.nightAmount,oceanTime:ocean.uniforms.oceanTime,plankton:{value:new Color("#4fe3c1")},deep:{value:0},rem:{value:0}};
     const material=new ShaderMaterial({uniforms,vertexShader,fragmentShader,transparent:true,depthWrite:false,side:DoubleSide,forceSinglePass:true});
     const mesh=new Mesh(ribbonGeometry(),material);
     mesh.name="Boat wake"; mesh.layers.set(TRANSPARENT_LAYER); mesh.frustumCulled=false;
     mesh.visible=false;
     return {mesh,uniforms};
-  },[]);
+  },[ocean]);
   useEffect(()=>{ lastTime.current=NaN; },[source,replay]);
   useEffect(()=>()=>{wake.mesh.material.dispose();wake.mesh.geometry.dispose();},[wake]);
   useFrame(()=>{
@@ -121,7 +131,7 @@ export function BoatWake({source,replay,night}:{source:WakeSource;replay:Replay;
     }
     if(!wake.mesh.visible) return;
     wake.uniforms.foam.value.set(night?"#9fb6bf":"#f2f8fa");
-    wake.uniforms.night.value=Number(night);
+
   });
   return <primitive object={wake.mesh} dispose={null}/>;
 }

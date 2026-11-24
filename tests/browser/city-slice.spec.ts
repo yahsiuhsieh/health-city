@@ -27,7 +27,7 @@ test("reviews both states of the two waterfront plots and restores the crossing 
   await view.selectOption("harbor");
   await expect(page.getByRole("heading",{name:"Working harbor"})).toBeVisible();
   const harbor = await frame();
-  await view.selectOption("berth");
+  await view.selectOption("cargo");
   expect((await frame()).equals(harbor)).toBe(false);
   await page.getByRole("button",{name:"Inspect berth"}).click();
   await expect(page.getByRole("heading",{name:"The cargo berth"})).toBeVisible();

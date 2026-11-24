@@ -18,8 +18,8 @@ const caustics = /* glsl */`
 `;
 
 type Shader = Parameters<MeshStandardMaterial["onBeforeCompile"]>[0];
-export function patchSand(shader: Shader, ocean: OceanEnvironment, surface: "sand" | "seabed" | "cityBeach" = "sand") {
-  Object.assign(shader.uniforms, ocean.uniforms);
+export function patchSand(shader: Shader, ocean: OceanEnvironment, surface: "sand" | "seabed" | "cityBeach" = "sand", bed = ocean.bed) {
+  Object.assign(shader.uniforms, ocean.uniforms, {bedMap:{value:bed.texture},bedBounds:{value:bed.bounds}});
   shader.vertexShader = "varying vec3 oceanPosition;\n" + shader.vertexShader.replace("#include <project_vertex>",
     "#include <project_vertex>\n oceanPosition = (modelMatrix * vec4(transformed, 1.)).xyz;");
   if(surface==="seabed"){

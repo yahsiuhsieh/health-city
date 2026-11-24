@@ -36,14 +36,14 @@ export function seabedGeometry(bed: SeabedData) {
     const shoreDistance=bed.sampleAt(x,z,1)*24;
     // Include the 0.6 m of run-up and the half-diagonal of a 2 m cell under the beach.
     const destination=bed.sampleAt(x,z,2)>.97;
-    if (depth >= 12 || (!destination && depth>=0 && shoreDistance < -2.4)) continue;
-    cells[j*cols+i] = destination && shoreDistance < -3 ? 1 : bed.sampleAt(x,z,2)>0 ? 3 : bed.sampleAt(x,z,5) <= 30 ? 2 : 1;
+    if (depth >= (destination?30:12) || (depth>=0 && shoreDistance < -2.4)) continue;
+    cells[j*cols+i] = destination ? (depth>3 ? 2 : 1) : bed.sampleAt(x,z,5) <= 30 ? 2 : 1;
   }
   for (let j=0;j<rows;j++) for (let i=0;i<cols;i++) {
     const n = j*cols+i, cell = cells[n], x = left+2*i, z = bottom+2*j;
     if (!cell) continue;
     if (cell >= 2) {
-      const step=cell===3?.5:1;
+      const step=1;
       for (let dz=0;dz<2;dz+=step) for (let dx=0;dx<2;dx+=step) {
         const a=vertex(x+dx,z+dz), b=vertex(x+dx+step,z+dz);
         const c=vertex(x+dx,z+dz+step), d=vertex(x+dx+step,z+dz+step);
@@ -76,9 +76,14 @@ export function seabedGeometry(bed: SeabedData) {
 
 export function Seabed() {
   const ocean = useOcean();
+  return <><Floor data={ocean.bed}/>{ocean.islandBed && <Floor data={ocean.islandBed}/>}</>;
+}
+
+function Floor({data}:{data:SeabedData}) {
+  const ocean = useOcean();
   const surfaces=useMemo(()=>{
-    const bed=seabedGeometry(ocean.bed),material=new MeshStandardMaterial({vertexColors:true,roughness:.95});
-    material.onBeforeCompile=shader=>patchSand(shader,ocean,"seabed");
+    const bed=seabedGeometry(data),material=new MeshStandardMaterial({vertexColors:true,roughness:.95});
+    material.onBeforeCompile=shader=>patchSand(shader,ocean,"seabed",data);
     const below:number[]=[],exposed:number[]=[],pos=bed.getAttribute("position"),index=bed.index!;
     for(let i=0;i<index.count;i+=3){
       const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);
@@ -89,7 +94,7 @@ export function Seabed() {
     for(const [name,attribute] of Object.entries(bed.attributes))bars.setAttribute(name,attribute);
     bed.setIndex(below);bars.setIndex(exposed);
     return {bed,bars,material};
-  },[ocean]);
+  },[ocean,data]);
   useEffect(()=>()=>{surfaces.bed.dispose();surfaces.bars.dispose();surfaces.material.dispose();},[surfaces]);
   return <><mesh name="Seabed" layers-mask={1<<SEABED_LAYER} geometry={surfaces.bed} material={surfaces.material} receiveShadow/>
     {!!surfaces.bars.index!.count && <mesh name="Exposed sandbars" geometry={surfaces.bars} material={surfaces.material} receiveShadow/>}</>;

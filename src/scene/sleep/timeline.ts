@@ -1,5 +1,5 @@
 import { WORK_BOAT_BERTH } from "../city/harbor-plan.ts";
-import { ROUTE_LENGTH, S_MOUTH, returnFrame, routeFrame } from "./route.ts";
+import { JETTY_SLIDE, ROUTE_LENGTH, S_MOUTH, returnStops, returnFrame, routeFrame } from "./route.ts";
 import { asleepSeconds, elapsedSeconds, type SleepSession, type SleepSegment } from "./session.ts";
 
 export interface RouteSpan extends SleepSegment { index: number; s0: number; s1: number }
@@ -7,8 +7,24 @@ function schedule(session: SleepSession) {
   const first = session.segments.find(s => s.stage !== "AWAKE");
   const lead = first ? Math.min(600,(first.end-first.start)*.25) : 0;
   const total = asleepSeconds(session);
-  const distance = (a: number) => !total ? 0 : a <= lead ? S_MOUTH*a/lead
-    : S_MOUTH+(ROUTE_LENGTH-S_MOUTH)*(a-lead)/(total-lead);
+  const slipTime=Math.min(.6*190,lead/2);
+  const ease=(u:number)=>u*u*(3-2*u);
+  function distance(a:number){
+    if(!total || a<=0)return 0;
+    if(a<=slipTime)return 1.5*ease(a/slipTime);
+    if(a<lead){
+      const u=(a-slipTime)/(lead-slipTime);
+      const finalSlope=(ROUTE_LENGTH-S_MOUTH)/(total-lead)*(lead-slipTime)/(S_MOUTH-1.5);
+      return 1.5+(S_MOUTH-1.5)*(ease(u)+Math.min(3,finalSlope)*u*u*(u-1));
+    }
+    const rate=(ROUTE_LENGTH-S_MOUTH)/(total-lead),remaining=(total-a)*rate;
+    if(remaining>=40)return S_MOUTH+(a-lead)*rate;
+    const arrivalTime=40/rate,slideTime=Math.min(114,arrivalTime*.22);
+    const timeLeft=total-a;
+    if(timeLeft<=slideTime)return ROUTE_LENGTH-JETTY_SLIDE+JETTY_SLIDE*ease(1-timeLeft/slideTime);
+    const u=(arrivalTime-timeLeft)/(arrivalTime-slideTime);
+    return ROUTE_LENGTH-40+(40-JETTY_SLIDE)*ease(u)+rate*(arrivalTime-slideTime)*u*(1-u)**2;
+  }
   let clock = 0;
   const spans = session.segments.map((seg,index) => {
     const a0 = clock;
@@ -31,15 +47,15 @@ export function routeDistanceAt(session: SleepSession,t: number) {
   return span ? distance(span.a0+(span.stage==="AWAKE"?0:t-span.start)) : spans.at(-1)?.s1 ?? 0;
 }
 export function revealDistanceAt(session: SleepSession,t: number) {
-  return t < 0 ? -1 : Math.min(ROUTE_LENGTH-12,routeDistanceAt(session,t+300));
+  return t < 0 ? -1 : Math.min(ROUTE_LENGTH-60,routeDistanceAt(session,t+300));
 }
 export function islandRevealAt(session: SleepSession,t: number) {
-  const u = Math.max(0,Math.min(1,1-(ROUTE_LENGTH-routeDistanceAt(session,t))/12));
+  const u = Math.max(0,Math.min(1,1-(ROUTE_LENGTH-routeDistanceAt(session,t))/60));
   return u*u*(3-2*u);
 }
 export function returnDurations(available = Infinity) {
-  const scale = Math.max(0,Math.min(1,available/2400));
-  return {wait:600*scale,sail:1800*scale};
+  const scale = Math.max(0,Math.min(1,available/4200));
+  return {wait:600*scale,sail:3600*scale};
 }
 export function voyageState(session: SleepSession,t: number, available = Infinity) {
   const span = t < 0 ? null : routeSpans(session).find(seg => t < seg.end) ?? null;
@@ -49,21 +65,13 @@ export function voyageState(session: SleepSession,t: number, available = Infinit
     since<wait?"arrived":since<wait+sail?"returning":"moored";
   const stage = span?.stage ?? null;
   const berthed = phase==="moored" || phase==="harbor";
-  const pose = berthed ? {x:WORK_BOAT_BERTH.position[0],z:WORK_BOAT_BERTH.position[1],yaw:WORK_BOAT_BERTH.yaw} :
-    phase==="returning" ? returnFrame((since-wait)/sail) : routeFrame(s);
-  if(phase==="returning"){
-    const fraction=(since-wait)/sail;
-    const smooth=(v:number)=>{const n=Math.max(0,Math.min(1,v));return n*n*(3-2*n);};
-    const startYaw=routeFrame(ROUTE_LENGTH).yaw;
-    const turn=Math.atan2(Math.sin(pose.yaw-startYaw),Math.cos(pose.yaw-startYaw));
-    // Turn away from the pier, then swing offshore before backing into the fairway.
-    pose.yaw=startYaw+smooth(fraction/.075)*turn+Math.PI*smooth((fraction-.62)/.16);
-  }
+  const pose = berthed ? {x:WORK_BOAT_BERTH.position[0],z:WORK_BOAT_BERTH.position[1],yaw:WORK_BOAT_BERTH.yaw,maneuver:"hold" as const} :
+    phase==="returning" ? returnFrame((since-wait)/sail,sail) : routeFrame(s);
   const anchor = stage==="AWAKE" && span && span.end-span.start>=240 ? Math.min(1,(t-span.start)/60,(span.end-t)/60) : 0;
-  return {phase,stage,span,s,x:pose.x,z:pose.z,yaw:pose.yaw,cabin:stage==="DEEP"?"closed":stage==="AWAKE"?"bright":"open",anchor,t};
+  return {phase,stage,span,s,maneuver:phase==="arrived" || stage==="AWAKE"?"hold":pose.maneuver,x:pose.x,z:pose.z,yaw:pose.yaw,cabin:stage==="DEEP"?"closed":stage==="AWAKE"?"bright":"open",anchor,t};
 }
 
-const sternOffset=7.1;
+const sternOffset=9.94;
 interface TrackPoint { x: number; z: number; distance: number }
 function lowerSegment(track: TrackPoint[], distance: number) {
   let low = 0, high = track.length-1;
@@ -88,7 +96,7 @@ function sternTrack(session: SleepSession) {
   if(cached)return cached;
   const sessionSeconds=elapsedSeconds(session);
   const track: TrackPoint[] = [];
-  for (let t=0;t<=sessionSeconds+2400;t+=trackStep) {
+  for (let t=0;t<=sessionSeconds+4200;t+=trackStep) {
     const point = sternAt(session,t);
     const last = track.at(-1);
     track.push({...point,distance:last ? last.distance+Math.hypot(point.x-last.x,point.z-last.z) : 0});
@@ -100,7 +108,7 @@ function sternTrack(session: SleepSession) {
 export function wakePath(session: SleepSession,t:number,count=55,spacing=1) {
   const points:{x:number;z:number;behind:number}[]=[];
   if(t<=0 || count<=0 || spacing<=0)return points;
-  t=Math.min(t,elapsedSeconds(session)+2400);
+  t=Math.min(t,elapsedSeconds(session)+4200);
   const track = sternTrack(session);
   const last = track[Math.floor(t/trackStep)]!;
   const stern = sternAt(session,t);
@@ -120,14 +128,22 @@ export function wakeStrength(session:SleepSession,t:number){
   if(t<=0 || !asleepSeconds(session))return 0;
   const span=routeSpans(session).find(s=>t<s.end), since=t-elapsedSeconds(session);
   if(!span){
-    if(since<600)return Math.max(0,1-since/600);
-    if(since<2400)return Math.min(1,(since-600)/60);
-    return Math.max(0,1-(since-2400)/600);
+    if(since<600)return 0;
+    if(since<4200){
+      const fraction=(since-600)/3600;
+      const {basinEntry,basinExit,alongside}=returnStops;
+      const from=fraction<basinEntry?.02:basinExit;
+      const to=fraction<basinEntry?basinEntry:alongside;
+      return Math.max(0,Math.min(1,60*(fraction-from),60*(to-fraction)));
+    }
+    return 0;
   }
   if(span.stage==="AWAKE"){
     if(span.s0===0)return 0;
     return Math.max(0,1-(t-span.start)/600);
   }
+  const remaining=ROUTE_LENGTH-routeDistanceAt(session,t);
+  if(remaining<15)return Math.max(0,(remaining-JETTY_SLIDE)/(15-JETTY_SLIDE));
   const previous=routeSpans(session)[span.index-1];
   if(previous?.stage==="AWAKE"){
     const held=previous.end-previous.start;

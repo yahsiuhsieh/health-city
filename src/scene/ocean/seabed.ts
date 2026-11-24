@@ -1,5 +1,6 @@
 import { DataTexture, DataUtils, HalfFloatType, LinearFilter, RGBAFormat, Vector4 } from "three";
-import { coast as defaultCoast } from "../coastline.ts";
+import { breakwaterArms } from "../city/harbor-plan.ts";
+import { harborWorks,coast as defaultCoast } from "../coastline.ts";
 
 import type { Point } from "../loop-path.ts";
 export interface SeabedFeature {
@@ -52,7 +53,7 @@ function landMask(polygon: Point[], bounds: Vector4, width: number, height: numb
 
 export function buildSeabed({ coastline: coast = defaultCoast, extraLand = [], features = [] }: SeabedOptions = {}) {
   const city = coast.map(section => section.waterline);
-  const extent = [...city, ...extraLand.flatMap(land => land.polygon)];
+  const extent = [...city,...(coast===defaultCoast?harborWorks.flatMap(s=>s.points):[]), ...extraLand.flatMap(land => land.polygon)];
   for (const f of features) {
     const r = Math.max(f.radiusX, f.radiusZ);
     extent.push([f.x-r,f.z-r], [f.x+r,f.z+r]);
@@ -140,7 +141,35 @@ export function buildSeabed({ coastline: coast = defaultCoast, extraLand = [], f
       data[k+3] = revetment || land?.shoreType === "rock" ? 2 : shoreType;
     }
   }
-  addLand(city);
+  if(city.length) addLand(city);
+  if(coast===defaultCoast){
+    const perimeter:Point[]=[...breakwaterArms[2],...[...breakwaterArms[3]].reverse()];
+    const basin=landMask(perimeter,bounds,width,height);
+    const xs=perimeter.map(p=>p[0]),zs=perimeter.map(p=>p[1]);
+    const west=Math.floor((Math.min(...xs)-50-left)/spacing),east=Math.ceil((Math.max(...xs)+50-left)/spacing);
+    const south=Math.floor((Math.min(...zs)-50-bottom)/spacing),north=Math.ceil((Math.max(...zs)+50-bottom)/spacing);
+    for(let iz=Math.max(0,south);iz<Math.min(height,north);iz++){
+      const z=bottom+(iz+.5)*spacing;
+      for(let ix=Math.max(0,west);ix<Math.min(width,east);ix++){
+        const x=left+(ix+.5)*spacing,n=iz*width+ix;
+        if(x<25)continue;
+        let d=0;
+        if(!basin[n]){
+          let nearest=Infinity;
+          for(let i=0;i<perimeter.length;i++){
+            const a=perimeter[i]!,b=perimeter[(i+1)%perimeter.length]!;
+            const dx=b[0]-a[0],dz=b[1]-a[1];
+            const u=clamp(((x-a[0])*dx+(z-a[1])*dz)/(dx*dx+dz*dz),0,1);
+            nearest=Math.min(nearest,(x-a[0]-u*dx)**2+(z-a[1]-u*dz)**2);
+          }
+          d=Math.sqrt(nearest);
+        }
+        const blend=clamp((x-25)/35,0,1)*clamp((48-d)/18,0,1);
+        const depth=5+d*(.16+.034*Math.sin(x*.11+z*.09));
+        data[n*4]=data[n*4]!+(depth/40-data[n*4]!)*blend;
+      }
+    }
+  }
   for (const land of extraLand) addLand(land.polygon, land);
 
   const rock = new Float32Array(width*height);
@@ -177,11 +206,18 @@ export function buildSeabed({ coastline: coast = defaultCoast, extraLand = [], f
       }
     }
   }
+  return packSeabed(bounds,width,height,data,rock,shoreDistance,spacing);
+}
+
+export function packSeabed(bounds:Vector4,width:number,height:number,data:Float32Array,rock:Float32Array,shoreDistance:Float32Array,spacing:number){
+  const left=bounds.x,bottom=bounds.y;
   const pixels = Uint16Array.from(data, DataUtils.toHalfFloat);
   const texture = new DataTexture(pixels, width, height, RGBAFormat, HalfFloatType);
   texture.minFilter = texture.magFilter = LinearFilter;
   texture.needsUpdate = true;
+  const contains = (x:number,z:number) => x>=left && z>=bottom && x<left+bounds.z && z<bottom+bounds.w;
   function sampleAt(x: number,z: number,channel: number) {
+    if (!contains(x,z)) return channel===5 ? margin : channel<2 ? 1 : 0;
     const px = clamp((x-left)/spacing-.5,0,width-1), pz = clamp((z-bottom)/spacing-.5,0,height-1);
     const ix = Math.floor(px), iz = Math.floor(pz), u = px-ix, v = pz-iz;
     const a = iz*width+ix, b = iz*width+Math.min(ix+1,width-1);
@@ -189,5 +225,5 @@ export function buildSeabed({ coastline: coast = defaultCoast, extraLand = [], f
     const read = (n: number) => channel === 5 ? shoreDistance[n]! : channel === 4 ? rock[n]! : DataUtils.fromHalfFloat(pixels[n*4+channel]!);
     return (read(a)*(1-u)+read(b)*u)*(1-v) + (read(a+row)*(1-u)+read(b+row)*u)*v;
   }
-  return { texture, bounds, sampleAt, depthAt: (x: number,z: number) => sampleAt(x,z,0)*40 };
+  return { texture, bounds, contains, sampleAt, depthAt: (x: number,z: number) => sampleAt(x,z,0)*40 };
 }

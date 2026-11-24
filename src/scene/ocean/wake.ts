@@ -1,3 +1,4 @@
+import { OUTER_MOUTH } from "../city/harbor-plan.ts";
 import { sessionSeconds, voyage } from "../sleep-voyage.ts";
 
 import { wakePath,wakeStrength } from "../sleep/timeline.ts";
@@ -13,8 +14,8 @@ export interface WakeSample {
 }
 export interface WakeSource { sample(replaySeconds: number): WakeSample }
 export const TRAIL_LENGTH = 55;
-const sternOffset = 7.1;
-const beam = 5;
+const sternOffset = 9.94;
+const beam = 5.6;
 const fade = (seconds: number) => Math.max(0, 1-seconds/600);
 
 export function voyageWake(offset: number | null): WakeSource {
@@ -28,15 +29,17 @@ const straight = 60, turnRadius = 12, arc = Math.PI*turnRadius;
 export const previewLap = 2*(straight+arc);
 export const previewStop = 4800;
 function previewStern(distance: number) {
+  // Keep the isolated wake study seaward of the outer breakwaters.
+  const startX=OUTER_MOUTH.point[0]+40,endX=startX+straight;
   const d = ((distance%previewLap)+previewLap)%previewLap;
-  if (d<straight) return {x:24+d,z:24,yaw:0};
+  if (d<straight) return {x:startX+d,z:24,yaw:0};
   if (d<straight+arc) {
     const angle=(d-straight)/turnRadius;
-    return {x:84+turnRadius*Math.sin(angle),z:36-turnRadius*Math.cos(angle),yaw:-angle};
+    return {x:endX+turnRadius*Math.sin(angle),z:36-turnRadius*Math.cos(angle),yaw:-angle};
   }
-  if (d<2*straight+arc) return {x:84-(d-straight-arc),z:48,yaw:-Math.PI};
+  if (d<2*straight+arc) return {x:endX-(d-straight-arc),z:48,yaw:-Math.PI};
   const angle=(d-2*straight-arc)/turnRadius;
-  return {x:24-turnRadius*Math.sin(angle),z:36+turnRadius*Math.cos(angle),yaw:-Math.PI-angle};
+  return {x:startX-turnRadius*Math.sin(angle),z:36+turnRadius*Math.cos(angle),yaw:-Math.PI-angle};
 }
 function previewDistance(seconds: number) {
   return Math.min(seconds%(previewStop+1200),previewStop)*previewLap/previewStop;
@@ -60,7 +63,7 @@ export function boatPathSamples(includeVoyage: boolean, includePreview: boolean)
   const points: {x:number;z:number}[]=[voyage(null,0)];
   if(includeVoyage) {
     let last = points[0]!;
-    for(let t=0;t<=sessionSeconds+2400;t+=5) {
+    for(let t=0;t<=sessionSeconds+4200;t+=5) {
       const ship=voyage(0,t);
       if(Math.hypot(ship.x-last.x,ship.z-last.z)>=.5) {points.push(ship); last=ship;}
     }

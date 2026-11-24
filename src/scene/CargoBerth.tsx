@@ -7,20 +7,20 @@ import type { InstancedMesh } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { boatPose } from "../core/representative-day.ts";
 import type { Replay } from "../core/replay.ts";
+import { destination } from "./sleep/island-preview.ts";
+import { captainTrack } from "./sleep/captain.ts";
+import { SYNTHETIC_SESSION,elapsedSeconds } from "./sleep/session.ts";
 import { voyage } from "./sleep-voyage.ts";
-import { WORK_BOAT_BERTH } from "./city/harbor-plan.ts";
+import { workingQuay,WORK_BOAT_BERTH } from "./city/harbor-plan.ts";
 import { port } from "./port-layout.ts";
-import { WORK_FLOAT as DOCK } from "./harbor-layout.ts";
+import { workingLines as fastenings } from "./harbor-layout.ts";
 import { cargoPose } from "./port-motion.ts";
 
+const departures=captainTrack(SYNTHETIC_SESSION).filter(l=>l.action==="line"&&l.start<0);
+const arrivedAt=elapsedSeconds(SYNTHETIC_SESSION);
 const horizontal=new Vector3(1,0,0);
 const up = new Vector3(0, 1, 0);
 const ropeSegments = 6;
-const fastenings = [
-  { onBoat: [-6.23, 1.70, 1.57] as const, bollardX: -7.3 },
-  { onBoat: [6.66, 1.79, 1.32] as const, bollardX: 7.3 },
-];
-
 export function MooringLines({ replay,offset }: { replay: Replay;offset:number|null }) {
   const gangway = useRef<Mesh>(null);
   const ropes = useRef<InstancedMesh>(null);
@@ -30,24 +30,28 @@ export function MooringLines({ replay,offset }: { replay: Replay;offset:number|n
   }), []);
   useFrame(() => {
     if (!ropes.current) return;
-    ropes.current.visible=voyage(offset,replay.read().seconds).moored;
+    const vessel=voyage(offset,replay.read().seconds);
+    const pier=vessel.stage==="At island"?destination().pier:null;
+    ropes.current.visible=vessel.moored || !!pier;
     if(gangway.current)gangway.current.visible=ropes.current.visible;
     if(!ropes.current.visible)return;
-    const pose = boatPose(replay.read().seconds);
+    const pose = boatPose(vessel.moored?replay.read().seconds:vessel.t+SYNTHETIC_SESSION.startSecondOfDay);
     const { ship, segment, from, to, start, end, direction } = rig;
-    ship.position.set(port.boatX, pose.y + port.boatTrim, port.boatZ);
+    ship.position.set(vessel.x, pose.y + port.boatTrim, vessel.z);
     ship.rotation.set(pose.pitch, WORK_BOAT_BERTH.yaw, pose.roll);
     ship.updateMatrix();
     for (const [i, fastening] of fastenings.entries()) {
-      from.fromArray(fastening.onBoat).applyMatrix4(ship.matrix);
-      to.set(DOCK.x+fastening.bollardX, DOCK.deck+.24, DOCK.z-.73);
+      from.fromArray(fastening.fairlead).applyMatrix4(ship.matrix);
+      if(pier)to.set(pier[0]+(fastening.fairlead[0]>0?6.2:-6.2),1.75,pier[1]+.94);
+      else to.set(fastening.bollardX, workingQuay.top+.34, workingQuay.edge-.6);
+      const fast=offset===null || (pier ? vessel.t>=arrivedAt+(i===0?64:28) : vessel.t>=0 || vessel.t<departures[i]!.end);
       start.copy(from);
       for (let k = 1; k <= ropeSegments; k++) {
         const t = k / ropeSegments;
         end.lerpVectors(from, to, t);
         end.y -= .48 * t * (1 - t);
         direction.subVectors(end, start);
-        segment.scale.set(1, direction.length(), 1);
+        if(fast)segment.scale.set(1,direction.length(),1);else segment.scale.setScalar(0);
         segment.quaternion.setFromUnitVectors(up, direction.normalize());
         segment.position.lerpVectors(start, end, .5);
         segment.updateMatrix();
@@ -56,8 +60,9 @@ export function MooringLines({ replay,offset }: { replay: Replay;offset:number|n
       }
     }
     if (gangway.current) {
-      from.set(port.boatX+.6,DOCK.deck+.055,DOCK.z-.48);
-      to.set(.6,1.60,2.20).applyMatrix4(ship.matrix);
+      if(pier)from.set(pier[0]+.54,1.43,pier[1]+1.35);
+      else from.set(port.boatX+.54,workingQuay.top+.055,workingQuay.edge-.26);
+      to.set(.54,1.34,-2.53).applyMatrix4(ship.matrix);
       direction.subVectors(to,from);
       gangway.current.position.lerpVectors(from,to,.5);
       gangway.current.quaternion.setFromUnitVectors(horizontal,direction.clone().normalize());

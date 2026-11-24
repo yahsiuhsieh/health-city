@@ -1,0 +1,82 @@
+.world.has-chart {height:auto; min-height:min(65dvh,780px); padding:91px 24px 22px; display:grid; align-content:center}
+.has-chart .scene-footer {display:none}
+.voyage-chart {
+  --paper:#f9fbf6; --ink:#243e46; --mute:#546d73; --line:#c2d5d4;
+  --water:#dcebed; --grid:#c1d8db; --shoal:#c2ded9; --contour:#8bb5b4; --land:#e7e7ce;
+  position:relative; margin:auto; width:min(100%,940px); padding:18px 23px 14px; border-radius:12px;
+  color:var(--ink); background:var(--paper); border:1px solid var(--line); box-shadow:0 4px 22px #10293936;
+  font-variant-numeric:tabular-nums;
+}
+.night .voyage-chart {
+  --paper:#21343c; --ink:#edf1df; --mute:#bccdcd; --line:#456068;
+  --water:#243f50; --grid:#2c4d5c; --shoal:#345b62; --contour:#4b757a; --land:#546557;
+}
+.voyage-heading {display:flex; justify-content:space-between; align-items:flex-start; gap:8px; margin-bottom:14px}
+.voyage-heading h2 {font-size:23px; font-weight:600; letter-spacing:-.65px; line-height:1.2; margin:0}
+.voyage-heading p {margin:4px 0 0; font-size:12px; color:var(--mute)}
+.voyage-heading button {color:var(--ink); background:transparent; border:1px solid var(--line); width:32px; height:32px; padding:0; font-size:22px; line-height:1}
+.voyage-body {display:grid; grid-template-columns:minmax(0,2.9fr) minmax(175px,1fr); gap:20px; align-items:start}
+.voyage-plot {min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:7px}
+.voyage-plot svg {width:100%; height:auto; display:block}
+.chart-water {fill:var(--water)}
+.chart-grid-line {fill:none; stroke:var(--grid); stroke-width:.7}
+.chart-depth {fill:var(--shoal); stroke:var(--contour); stroke-width:.8}
+.depth-0 {fill-opacity:.13; stroke-opacity:.46}
+.depth-1 {fill-opacity:.29; stroke-opacity:.66}
+.depth-2 {fill-opacity:.63}
+.chart-land {fill:var(--land); stroke:var(--contour); stroke-width:1.15}
+.chart-island-interior {fill:var(--contour); fill-opacity:.42}
+.chart-terrain,.chart-pier {fill:none; stroke:var(--mute); stroke-width:1.6}
+.chart-terrain {opacity:.32}
+.chart-place {font:italic 15px Georgia,serif; fill:var(--ink); stroke:var(--land); stroke-width:2.5; paint-order:stroke}
+.chart-compass {stroke:var(--mute); fill:none; stroke-width:1}
+.chart-arrow {fill:var(--ink)}
+.chart-compass text,.chart-tick text,.chart-anchor text {font:11px "Avenir Next",sans-serif; fill:var(--ink); stroke:none}
+.chart-tick path,.chart-leader {stroke:var(--mute); fill:none; stroke-width:1}
+.chart-segment {cursor:pointer; fill:none}
+.chart-segment-edge {stroke:var(--paper); stroke-width:8}
+.chart-segment:focus-visible .chart-segment-edge,.chart-segment:hover .chart-segment-edge {stroke:var(--ink)}
+.chart-segment[aria-pressed="true"] .chart-segment-edge {stroke:var(--ink)}
+.chart-hit {stroke:transparent; stroke-width:21; pointer-events:stroke}
+.chart-anchor {cursor:pointer}
+.chart-annotation {fill:var(--paper); stroke:var(--contour)}
+.chart-anchor-icon {stroke:var(--ink); fill:none; stroke-width:1.4; stroke-linecap:round}
+.chart-boat {pointer-events:none}
+.chart-boat circle {fill:var(--paper); stroke:var(--ink); stroke-width:1.2}
+.chart-boat path {fill:#ab512e}
+.voyage-reading {border-top:1px solid var(--line); padding:8px 12px; margin:0; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; font-size:12px}
+.voyage-reading span {color:var(--mute)}
+.voyage-reading strong {font-weight:600}
+.voyage-stages h3 {font-size:14px; margin:0 0 9px}
+.voyage-stack {height:8px; display:flex; border-radius:3px; overflow:hidden; margin-bottom:9px}
+.voyage-stack i {flex-basis:0}
+.voyage-stages table {width:100%; border-collapse:collapse; font-size:12px}
+.voyage-stages th,.voyage-stages td {padding:5px 0; text-align:right}
+.voyage-stages th:first-child {text-align:left}
+.voyage-stages thead {color:var(--mute); border-bottom:1px solid var(--line)}
+.voyage-stages th {font-weight:500}
+.voyage-stages th i {width:7px; height:7px; display:inline-block; border-radius:2px; margin-right:6px; vertical-align:1px}
+.voyage-totals {display:flex; gap:clamp(20px,5vw,70px); margin:13px 0 0; border-top:1px solid var(--line); padding-top:10px}
+.voyage-totals > div {border:0; padding:0}
+.voyage-totals dt {font-size:11px; color:var(--mute); margin:0 0 2px}
+.voyage-totals dd {font-size:16px; font-weight:600}
+@media(max-width:760px){
+  .world.has-chart {min-height:470px; padding:15px 8px 10px; grid-template-columns:minmax(0,1fr); align-content:start; gap:12px}
+  .has-chart .scene-heading,.has-chart .view-controls {position:static; margin:0 6px}
+  .has-chart .view-controls {justify-content:flex-start}
+  .voyage-chart {padding:13px 11px 12px}
+  .voyage-heading {margin-bottom:10px}
+  .voyage-heading h2 {font-size:20px}
+  .voyage-body {grid-template-columns:1fr; gap:12px}
+  .voyage-reading {padding:6px 8px; gap:3px 8px}
+  .chart-place {font-size:21px}
+  .chart-tick text,.chart-anchor text,.chart-compass text {font-size:18px}
+  .chart-tick.minor text {display:none}
+  .chart-hit {stroke-width:36}
+  .chart-annotation {width:134px; x:-67px}
+  .chart-anchor-icon {transform:translate(-55px,0)}
+  .voyage-stages th,.voyage-stages td {padding:3px 0}
+  .voyage-stack {margin-bottom:4px}
+  .voyage-totals {justify-content:space-between; gap:5px; margin-top:9px}
+  .voyage-totals dd {font-size:14px}
+}

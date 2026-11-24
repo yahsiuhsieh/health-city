@@ -50,7 +50,7 @@ test("supports timeline seeking and a narrow layout", async ({ page }) => {
   await page.getByRole("button", { name: "Start of day", exact: true }).click();
   await expect(page.locator("output")).toHaveText("00:00");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole("combobox", { name: "Scene view" }).selectOption("berth");
+  await page.getByRole("combobox", { name: "Scene view" }).selectOption("cargo");
   await page.getByRole("button", { name: "Inspect berth", exact: true }).click();
   await expect(page.getByRole("heading", { name: "The cargo berth" })).toBeVisible();
   await page.getByRole("button", { name: "Close berth details", exact: true }).click();
@@ -58,7 +58,7 @@ test("supports timeline seeking and a narrow layout", async ({ page }) => {
 
 test("selecting the cargo berth pauses replay and preserves time during camera and lighting changes", async ({ page }) => {
   await page.getByRole("button", { name: "Play", exact: true }).click();
-  await page.getByRole("combobox", { name: "Scene view" }).selectOption("berth");
+  await page.getByRole("combobox", { name: "Scene view" }).selectOption("cargo");
   await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
   const canvas = page.locator("canvas");
   const bounds = await canvas.boundingBox();

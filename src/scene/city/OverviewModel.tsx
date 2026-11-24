@@ -111,6 +111,8 @@ export function OverviewModel({ model, animated = false, omitSmall = false }: {
     model.traverse(object => {
       if (object instanceof Light && object.visible) lights.push(object);
       if (!(object instanceof Mesh) || !(object.material instanceof MeshStandardMaterial)) return;
+      // These fittings change visibility independently during a voyage.
+      if(object.parent?.name.startsWith("light-") || /^(?:cabin-shutter|anchor-ball|bow-anchor)/.test(object.name) || object.parent?.name==="bow-anchor")return;
       const m = object.material;
       if (m.transparent || m.map || !object.geometry.hasAttribute("normal")) return;
       layers.set(object, object.layers.mask);
