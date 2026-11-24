@@ -6,7 +6,7 @@ import { Captain, HarborFleet } from "./HarborFleet.tsx";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { ACESFilmicToneMapping, Box3, PCFSoftShadowMap, Group, Mesh, MeshStandardMaterial, Quaternion, Vector3 } from "three";
+import { ACESFilmicToneMapping, Box3, InstancedMesh, Object3D, PointLight, PCFSoftShadowMap, Group, Mesh, MeshStandardMaterial, Quaternion, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { Replay } from "../core/replay.ts";
@@ -37,16 +37,24 @@ import type { CameraCommand, TowerDesignId } from "./skyline-layout.ts";
 import type { HrvSkyline } from "../core/skyline.ts";
 import { addCameraClearance, CAMERA_DEPTH_OFFSET, CAMERA_FAR, CAMERA_NEAR } from "./camera-depth.ts";
 
-import { SleepIsland } from "./SleepIsland.tsx";
+import { VoyageLife } from "./sleep/VoyageLife.tsx";
+import { islandRevealAt } from "./sleep/timeline.ts";
+import { cabinState,companionState } from "./sleep/vessel-state.ts";
+import { SYNTHETIC_SESSION } from "./sleep/session.ts";
+import { StageInspection } from "./sleep/StageInspection.tsx";
+import { destination } from "./sleep/island-preview.ts";
+import { DestinationIsland } from "./sleep/DestinationIsland.tsx";
+import { SeaMist } from "./sleep/SeaMist.tsx";
 import { StageEnvironments } from "./sleep/StageEnvironments.tsx";
 import { voyage } from "./sleep-voyage.ts";
 import { HeartRidge } from "./HeartRidge.tsx";
 import {cityPreview} from "./city/preview.ts";
 const CitySlice=import.meta.env.DEV?lazy(()=>import("./city/CitySlice.tsx")):null;
 import {blockOffsetX,sliceBerth} from "./city/slice-plan.ts";
+const crewOrigin=new Vector3();
 const upAxis=new Vector3(0,1,0);
 interface SceneProps {
-  offset:number|null;onWake:()=>void;
+  offset:number|null;onWake:()=>void;onIsland:()=>void;onStage:(index:number)=>void;
   heartReady:boolean; onHeart:(start:number,end:number)=>void;
   replay: Replay;
   day: ReplayDay;
@@ -79,7 +87,7 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
   const { camera, gl, size } = useThree();
   const controlsRef = useRef<OrbitControls | null>(null);
   const lastShip=useRef(new Vector3());
-  const lastYaw=useRef(0);
+  const lastYaw=useRef(0),lastWidth=useRef(1),lastIsland=useRef(0);
   const followedReplay = cameraCommand.view === "sleep" || cameraCommand.view === "detail" ? replay : null;
   const followedOffset = followedReplay ? offset : null;
   const bounded = useMemo(() => new Vector3(), []);
@@ -137,6 +145,10 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
         camera.position.copy(controls.target).add(new Vector3(110,90,45));
         camera.zoom = Math.min(size.width / 178, size.height / 148);
       }
+    } else if (cameraCommand.view === "sleep-island") {
+      lastIsland.current=0;controls.target.set(195,2,0);
+      camera.position.copy(controls.target).add(new Vector3(-22,47,39));
+      camera.zoom=Math.min(size.width/64,size.height/(64*.78));
     } else if (cameraCommand.view === "sleep-route") {
       controls.target.set(108,0,0);
       camera.position.copy(controls.target).add(new Vector3(9,120,92));
@@ -159,7 +171,7 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
     } else if (followedReplay) {
       const ship=workingBoat(followedOffset,followedReplay.read().seconds);
       controls.target.set(ship.x, cameraSpots.detail[1], ship.z);lastShip.current.set(ship.x,0,ship.z);
-      lastYaw.current=ship.yaw;
+      lastYaw.current=ship.yaw;lastWidth.current=1;
       const offsetView=cameraCommand.view==="sleep"?(wakePreview?new Vector3(5,13,15):new Vector3(-8,20,19)).applyAxisAngle(upAxis,ship.yaw):new Vector3(12,5.3,7);
       camera.position.copy(controls.target).add(offsetView);
       camera.zoom = cameraCommand.view==="sleep"?(wakePreview?Math.min(size.width/24,size.height/16):Math.min(size.width/43,size.height/29)):Math.min(size.width / 25, size.height / 16);
@@ -188,8 +200,22 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
         camera.lookAt(target);
       }
       lastYaw.current=ship.yaw;
+      const animal=cameraCommand.view==="sleep"&&!wakePreview&&ship.stage==="REM"?companionState(SYNTHETIC_SESSION,ship.t,replay.read().seconds):null;
+      const spread=animal?.kind==="whale"?animal.fade:0;
+      const shift=-12*spread, width=1+.38*spread;
+      ship.x+=shift*Math.sin(ship.yaw);ship.z+=shift*Math.cos(ship.yaw);
+      if(width!==lastWidth.current){camera.zoom*=lastWidth.current/width;camera.updateProjectionMatrix();lastWidth.current=width;}
       bounded.set(ship.x,0,ship.z).sub(lastShip.current);
       camera.position.add(bounded);target.add(bounded);lastShip.current.set(ship.x,0,ship.z);
+    }
+    if(cameraCommand.view==="sleep-island" && offset!==null){
+      const level=islandRevealAt(SYNTHETIC_SESSION,offset+replay.read().seconds);
+      if(level!==lastIsland.current){
+        const land=destination(),step=level-lastIsland.current,width=Math.max(12,2.95*land.radius);
+        bounded.set((land.center[0]-195)*step,0,land.center[1]*step);target.add(bounded);camera.position.add(bounded);
+        camera.zoom*=(64+(width-64)*lastIsland.current)/(64+(width-64)*level);camera.updateProjectionMatrix();
+        lastIsland.current=level;
+      }
     }
     bounded.set(Math.max(-262, Math.min(cameraCommand.view.startsWith("sleep") || cameraCommand.view === "detail" ? 245 : 96, target.x)), Math.max(0, Math.min(65, target.y)), Math.max(-120, Math.min(118, target.z)));
     camera.position.add(bounded.sub(target));
@@ -215,7 +241,7 @@ function Boat({ replay, night, onSelect, onReady,offset }: Pick<SceneProps, "off
       child.castShadow = true;
       child.receiveShadow = true;
       const copy = (material: MeshStandardMaterial) => {
-        const key = material.uuid + (child.name.startsWith("mast-lamp") ? ":lamp" : child.name.startsWith("cabin-window")?":window":"");
+        const key = material.uuid + (child.name==="anchor-light" ? ":anchor" : child.name.startsWith("mast-lamp") ? ":lamp" : child.name.startsWith("cabin-window")?":window":"");
         if (!copies.has(key)) copies.set(key, material.clone());
         return copies.get(key)!;
       };
@@ -227,11 +253,17 @@ function Boat({ replay, night, onSelect, onReady,offset }: Pick<SceneProps, "off
     const socket=boat.getObjectByName("captain-socket")!;
     return {position:socket.getWorldPosition(new Vector3()),quaternion:socket.getWorldQuaternion(new Quaternion())};
   },[boat]);
-  const cabin=useMemo(()=>{
-    const materials=new Set<MeshStandardMaterial>();
-    boat.traverse(o=>{if(o instanceof Mesh && o.name.startsWith("cabin-window"))materials.add(o.material)});
-    return [...materials];
+  const rig=useMemo(()=>{
+    const windows=new Set<MeshStandardMaterial>(),shutters:Mesh[]=[];
+    boat.traverse(o=>{if(o instanceof Mesh){
+      if(o.name.startsWith("cabin-window"))windows.add(o.material);
+      if(o.name.startsWith("cabin-shutter"))shutters.push(o);
+    }});
+    return {windows,shutters,anchor:boat.getObjectByName("bow-anchor")!,ball:boat.getObjectByName("anchor-ball")!,
+      lamp:boat.getObjectByName("anchor-light") as Mesh,link:new Object3D()};
   },[boat]);
+  const crew=useRef<Group>(null),chain=useRef<InstancedMesh>(null),foam=useRef<Group>(null);
+  const upper=useRef<PointLight>(null),lower=useRef<PointLight>(null);
   useEffect(() => onReady(), [onReady]);
   useEffect(() => () => {
     const disposed = new Set<MeshStandardMaterial>();
@@ -264,12 +296,38 @@ function Boat({ replay, night, onSelect, onReady,offset }: Pick<SceneProps, "off
     const seconds=replay.read().seconds;
     const ship=workingBoat(offset,seconds);
     const pose=boatPose(ship.moored?seconds:ship.t+23*3600);
-    for(const window of cabin){
-      window.emissive.setHex(ship.stage==="AWAKE"||night?0xffc97a:0);
-      window.emissiveIntensity=ship.stage==="AWAKE"?1.4:night?(ship.stage==="DEEP"?.18:.65):0;
+    const state=cabinState(SYNTHETIC_SESSION,ship.t);
+    for(const window of rig.windows){
+      window.emissive.setHex(state.bright>0?0xffd27f:0xffc97a);
+      window.emissiveIntensity=night?state.night:state.day;
     }
-    group.current.position.set(ship.x, pose.y + port.boatTrim, ship.z);
-    group.current.rotation.set(pose.pitch, ship.yaw, pose.roll);
+    for(const shutter of rig.shutters)shutter.scale.y=.06+.94*state.closed;
+    rig.anchor.position.y=.78-state.anchor*1.91;
+    const submerged=rig.anchor.position.y*1.42+pose.y+port.boatTrim<0;
+    rig.ball.visible=submerged&&!night;rig.lamp.visible=submerged&&night;
+    const lampMaterial=rig.lamp.material as MeshStandardMaterial;
+    lampMaterial.emissive.setHex(0xfff7e1);lampMaterial.emissiveIntensity=1.5;
+    if(upper.current)upper.current.intensity=8*state.lamps;
+    if(lower.current)lower.current.intensity=5*state.lamps;
+    if(crew.current){
+      crew.current.visible=state.captain!=="inside";
+      crew.current.position.copy(captain.position);
+      if(state.captain==="bow")crew.current.position.set(5.7,1.64,.53);
+    }
+    if(chain.current){
+      const length=Math.min(state.anchor*2.71,1.32+pose.y+port.boatTrim);
+      chain.current.count=Math.max(0,Math.min(36,Math.floor(length/.068)));
+      for(let i=0;i<chain.current.count;i++){
+        rig.link.position.set(7.29,1.32-i*.068,1.7);rig.link.rotation.y=i%2*Math.PI/2;
+        rig.link.scale.set(.67,1,1);rig.link.updateMatrix();chain.current.setMatrixAt(i,rig.link.matrix);
+      }
+      chain.current.instanceMatrix.needsUpdate=true;
+    }
+    if(foam.current){foam.current.visible=state.entry>.001;foam.current.scale.setScalar(state.entry);}
+    const yaw=ship.yaw+state.swing;
+    group.current.position.set(ship.x+7.29*(Math.cos(ship.yaw)-Math.cos(yaw)),pose.y+port.boatTrim,
+      ship.z+7.29*(Math.sin(yaw)-Math.sin(ship.yaw)));
+    group.current.rotation.set(pose.pitch,yaw,pose.roll);
   });
   const pointerDown = useRef<[number, number] | null>(null);
   const inspect = (event: ThreeEvent<MouseEvent>) => {
@@ -279,9 +337,11 @@ function Boat({ replay, night, onSelect, onReady,offset }: Pick<SceneProps, "off
     pointerDown.current = null;
   };
   return <group ref={group} onPointerDown={event => { pointerDown.current = [event.clientX, event.clientY]; }} onClick={inspect}>
-    <OverviewModel model={boat} omitSmall/><Captain {...captain}/>
-    {night && !overview && <><pointLight position={[-2.0, 3.2, 0]} color="#ffce86" intensity={8} distance={5} />
-      <pointLight position={[-2.3, 1.8, 0]} color="#ffd493" intensity={5} distance={4} /></>}
+    <OverviewModel model={boat} omitSmall/><group ref={crew}><Captain position={crewOrigin} quaternion={captain.quaternion}/></group>
+    <instancedMesh ref={chain} args={[undefined,undefined,36]} frustumCulled={false}><torusGeometry args={[.041,.009,4,8]}/><meshStandardMaterial color="#485653"/></instancedMesh>
+    <group ref={foam} position={[7.29,.018,1.72]}>{[-1,0,1].map(i=><mesh key={i} position={[i*.14,0,i*i*.1]} scale={[.17,.03,.1]}><icosahedronGeometry args={[1,0]}/><meshBasicMaterial color="#ddece2"/></mesh>)}</group>
+    {night && !overview && <><pointLight ref={upper} position={[-2.0, 3.2, 0]} color="#ffce86" intensity={8} distance={5} />
+      <pointLight ref={lower} position={[-2.3, 1.8, 0]} color="#ffd493" intensity={5} distance={4} /></>}
   </group>;
 }
 
@@ -354,7 +414,8 @@ export default function BoatScene(props: SceneProps) {
     <group visible={!focus}>
 
       {props.offset!==null && !focus && <Suspense fallback={null}><StageEnvironments replay={props.replay} offset={props.offset} follow={props.cameraCommand.view==="sleep"}/></Suspense>}
-      {props.offset!==null && <SleepIsland replay={props.replay} offset={props.offset} onWake={props.onWake}/>}
+      {props.offset!==null && <Suspense fallback={null}><VoyageLife offset={props.offset} replay={props.replay} night={night} overview={props.cameraCommand.view==="sleep-route"} onWake={props.onWake}/></Suspense>}
+      {props.offset!==null && <><SeaMist/><StageInspection inspect={props.onStage}/><Suspense fallback={null}><DestinationIsland onIsland={props.onIsland}/></Suspense></>}
       {!wakePreview && <MooringLines offset={props.offset} replay={props.replay}/>}
       <StreetLamp position={[DOCK.x-7.8, DOCK.deck, DOCK.z+.58]} toward={Math.PI / 2} night={night} scale={.68} />
       <StreetLamp position={[-7.2, PAVING_Y, 3.58]} toward={Math.PI / 2} night={night} scale={.68} />

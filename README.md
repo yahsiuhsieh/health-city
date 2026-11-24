@@ -27,7 +27,10 @@ This threshold is provisional. Primary-desktop measurements must calibrate it.
 
 Day and Night are explicit material-review controls. They do not represent historical daylight or weather.
 The Account link opens the authentication status page. The default scene uses the Worker's public synthetic HRV response.
-Sleep stages, islands, and recorded voyages are pending.
+The synthetic sleep voyage runs from November 11 at 23:00 to November 12 at 06:30, Chicago time.
+Select **Sleep voyage** to follow the boat. Select **Sleep route overview** to inspect the revealed stages.
+Select **Sleep island** to inspect the destination and its habitat areas. Click the awakening buoy at 03:04 to inspect the interruption.
+The recorded Google Health sleep feed still needs a scene integration.
 
 ### HRV skyline
 

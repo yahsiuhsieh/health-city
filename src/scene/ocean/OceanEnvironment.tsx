@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Replay } from "../../core/replay.ts";
 import { revealDistanceAt, islandRevealAt } from "../sleep/timeline.ts";
+import { destination } from "../sleep/island-preview.ts";
 import { ROUTE_LENGTH } from "../sleep/route.ts";
 import { SYNTHETIC_SESSION } from "../sleep/session.ts";
 import { waterMap, sleepFeatures } from "../sleep/water-map.ts";
@@ -15,10 +16,11 @@ import type { SeabedOptions } from "./seabed.ts";
 import { buildSeabed } from "./seabed.ts";
 
 function makeOcean(hasIsland: boolean, coastline?: SeabedOptions["coastline"]) {
-  const zones = hasIsland ? waterMap(SYNTHETIC_SESSION) : null;
+  const island=hasIsland?destination():undefined;
+  const zones=island?waterMap(SYNTHETIC_SESSION,island):null;
   const features = coastline ? [] : shelfMounds();
   const sleepShelf = hasIsland ? sleepFeatures(SYNTHETIC_SESSION) : [];
-  const bed = buildSeabed({coastline, features: [...features,...sleepShelf]});
+  const bed = buildSeabed({coastline, features: [...features,...sleepShelf],extraLand:island?[{polygon:island.polygon,revealKey:1,shoreWidth:8.8}]:[]});
   return { bed, uniforms: {
     sleepZones: {value:zones?.texture ?? null}, sleepBounds: {value:zones?.bounds ?? new Vector4(0,0,1,1)},
     hasSleepZones: {value:hasIsland}, uRevealS:{value:-1}, uIslandReveal:{value:0},
@@ -50,7 +52,7 @@ export function OceanProvider({ replay, night, offset, children, coastline }: {
     const distance=revealDistanceAt(SYNTHETIC_SESSION,t);
     ocean.uniforms.uRevealS.value=distance;
     ocean.uniforms.uIslandReveal.value=islandRevealAt(SYNTHETIC_SESSION,t);
-    ocean.uniforms.reveal.value=Math.max(0,distance/ROUTE_LENGTH);
+    ocean.uniforms.reveal.value=Math.max(0,distance/ROUTE_LENGTH)+(12/ROUTE_LENGTH)*ocean.uniforms.uIslandReveal.value;
   }, -1);
   return <Context.Provider value={ocean}>{children}</Context.Provider>;
 }

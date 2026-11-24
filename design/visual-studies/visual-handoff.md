@@ -214,7 +214,7 @@ Browser checks covered loading, day/night switching, animation play/pause, camer
 
 The user requested a voyage through successive sleep environments and an island at the destination. The previous prototype arranged the stages in wedges around a circular island. The reef study informed the open sponge tubes, layered coral, rock shelves, and sand gaps. [Reef reference](images/reef-reference.png)
 
-Checkpoint A is ready for user review. Select **Sleep voyage** to follow the synthetic November 11–12 session. The times below use Chicago local time. The Day and Night controls change the lighting independently of the replay clock.
+The user reviewed checkpoint A and requested completion of the full voyage before the next art review. Select **Sleep voyage** to follow the synthetic November 11–12 session. The times below use Chicago local time. The Day and Night controls change the lighting independently of the replay clock.
 
 | November 12 | View | Day | Night |
 | --- | --- | --- | --- |
@@ -230,4 +230,5 @@ The outbound route measures 174.45 m from the working berth to the island pier. 
 
 The model sheets show the same assets with four rendering treatments. [Silhouette](sleep-voyage-v2/assets-blockout.png) · [Form](sleep-voyage-v2/assets-form.png) · [Material](sleep-voyage-v2/assets-material.png) · [Lighting](sleep-voyage-v2/assets-lighting.png)
 
-The destination uses a temporary island and pier. Phase 4 adds the cabin states, anchoring sequence, and REM companions. Phase 5 supplies the island terrain and habitats. User approval of checkpoint A is pending.
+Checkpoint A used a temporary landing. The user expressed reservations about the stage environments.
+Checkpoint B includes the finished island, cabin and anchor states, buoy, companions, and inspection cards. Art approval is pending. [Final screenshots and measurements](sleep-voyage-v2/checkpoint-b/README.md)

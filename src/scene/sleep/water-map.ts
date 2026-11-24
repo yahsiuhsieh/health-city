@@ -5,7 +5,10 @@ import type { SleepSession } from "./session.ts";
 import { routeSpans } from "./timeline.ts";
 import { seededRandom } from "./random.ts";
 
-export function waterMap(session: SleepSession) {
+import type { IslandTerrain } from "./island-shape.ts";
+import { lagoonWeight } from "./island-mesh.ts";
+
+export function waterMap(session: SleepSession,land?:IslandTerrain) {
   const bounds=new Vector4(-10,-50,255,100), width=510,height=200;
   const data=new Uint8Array(width*height*4), nearest=new Float32Array(width*height).fill(Infinity);
   const spans=routeSpans(session);
@@ -25,6 +28,14 @@ export function waterMap(session: SleepSession) {
         data[k+(span.stage==="DEEP"?1:span.stage==="REM"?2:0)]=255*Math.max(0,edge);
         data[k+3]=Math.round(s/ROUTE_LENGTH*255);
       }
+    }
+  }
+  if(land){
+    for(let j=0;j<height;j++)for(let i=0;i<width;i++){
+      const x=bounds.x+(i+.5)*.5,z=bounds.y+(j+.5)*.5;
+      if(x<land.left-8||x>land.left+land.width+8||z<land.bottom-8||z>land.bottom+land.height+8)continue;
+      const mask=lagoonWeight(land,x,z);if(mask<=0)continue;
+      const k=4*(j*width+i);data[k+2]=Math.round(255*mask);data[k+3]=255;
     }
   }
   const texture=new DataTexture(data,width,height);

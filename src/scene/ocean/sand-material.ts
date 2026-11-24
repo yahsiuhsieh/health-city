@@ -23,10 +23,10 @@ export function patchSand(shader: Shader, ocean: OceanEnvironment, surface: "san
   shader.vertexShader = "varying vec3 oceanPosition;\n" + shader.vertexShader.replace("#include <project_vertex>",
     "#include <project_vertex>\n oceanPosition = (modelMatrix * vec4(transformed, 1.)).xyz;");
   if(surface==="seabed"){
-    shader.vertexShader="uniform sampler2D bedMap; uniform vec4 bedBounds; uniform float reveal;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
+    shader.vertexShader="uniform sampler2D bedMap; uniform vec4 bedBounds; uniform float reveal,uIslandReveal;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
       #include <begin_vertex>
       float key=texture2D(bedMap,(position.xz-bedBounds.xy)/bedBounds.zw).b;
-      if(key>0.) transformed.y-=16.*(1.-smoothstep(key-.030,key,reveal));
+      if(key>0. && transformed.y>-.06) transformed.y=mix(-.06,transformed.y,key>.97?uIslandReveal:smoothstep(key-.030,key,reveal));
     `);
   }
   if (surface === "cityBeach") {
@@ -48,7 +48,7 @@ export function patchSand(shader: Shader, ocean: OceanEnvironment, surface: "san
     varying vec3 oceanPosition;
     uniform sampler2D bedMap;
     uniform vec4 bedBounds;
-    uniform float oceanTime, nightAmount, reveal;
+    uniform float oceanTime, nightAmount, reveal,uIslandReveal;
     ${shoreGLSL}
     ${caustics}
   ` + shader.fragmentShader.replace("#include <color_fragment>", `
@@ -58,14 +58,13 @@ export function patchSand(shader: Shader, ocean: OceanEnvironment, surface: "san
     if (landHeight >= 0. && landHeight < .6) {
       vec4 bank = texture2D(bedMap,(oceanPosition.xz-bedBounds.xy)/bedBounds.zw);
       vec2 wash = shoreWash(oceanPosition.xz,24.*bank.g,oceanTime);
-      float beach = max(0.,1.-bank.a)*step(bank.b,reveal)*(1.-smoothstep(.22,.6,landHeight));
+      float beach = max(0.,1.-bank.a)*(bank.b>.97?uIslandReveal:step(bank.b,reveal))*(1.-smoothstep(.22,.6,landHeight));
       diffuseColor.rgb *= 1.-.18*wash.y*beach;
       shoreFoam = wash.x*beach*mix(.85,.5,nightAmount);
     }
   `).replace("#include <lights_fragment_end>", `
     #include <lights_fragment_end>
     float depthBelow = ${WATER_LEVEL} - oceanPosition.y;
-    ${surface === "seabed" ? "if (texture2D(bedMap,(oceanPosition.xz-bedBounds.xy)/bedBounds.zw).b > reveal+.030) discard;" : ""}
     if (depthBelow >= 0. && depthBelow < 4.5) {
       // Direct diffuse already includes the sun angle and the shadow map.
       reflectedLight.directDiffuse += reflectedLight.directDiffuse * vec3(1.,.92,.69) * web(oceanPosition.xz)

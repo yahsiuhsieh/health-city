@@ -33,6 +33,12 @@ _Avoid_: Separate sessions created solely because sleep crosses midnight.
 **Sleep island**: An island for one complete sleep session. Land area is proportional to recorded time asleep, and habitat proportions reflect stage durations.
 Naps have separate islands. Awake segments do not add islands or land area.
 
+**Sleep route**: The fixed outbound passage from the working berth to the sleep island pier.
+_Avoid_: Return voyage.
+
+**Channel bank**: A narrow, forested rock ridge beside a DEEP sleep channel. Its forest grows above the water.
+_Avoid_: Sleep island.
+
 **Sleep journey**: The chronological boat journey through the environments for a sleep session's stages. Scenes appear progressively, ending with arrival at the completed sleep island.
 _Avoid_: The return voyage to the city, repeated circuits around an island.
 

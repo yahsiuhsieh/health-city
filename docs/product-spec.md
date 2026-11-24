@@ -257,11 +257,14 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 - Do not force departure or arrival at the date boundary. Preserve complete start and end dates in the session overview.
 - Make land area proportional to recorded time asleep, excluding awake intervals. Use a common scale across dates and sessions.
 - Doubling asleep duration doubles area, not diameter.
-- Show elapsed start-to-end duration separately. Shape, area conversion, and extreme-size handling remain open.
+- Show elapsed start-to-end duration separately. Use 2.4 m² of land per asleep minute across all session sizes. Apply no minimum or maximum island area.
+- Form a natural coastline with headlands and a bay at the landing. Exclude the underwater apron from the area.
+- Use the same 174.45 m route for every session. The route leaves the current working berth, passes the harbor mouth, and ends at the island pier.
+- Preserve the revealed stage environments for the selected day. Reveal the whole island through thinning mist during the final 12 m of the approach.
 - Prioritize duration and continuity in the overview. Show stage detail at closer scales.
 - Reveal stage environments progressively along the journey.
 - Final session end means arrival at the completed sleep island and full reveal. A temporary awakening is not arrival.
-- Completed habitats preserve LIGHT, DEEP, and REM asleep-duration proportions. Awake interruptions add no land area.
+- The REM island habitat occupies a coastal cove on land. Completed habitats preserve LIGHT, DEEP, and REM asleep-duration proportions. Awake interruptions add no land area.
 - Show islands relevant to the selected day, including naps and sessions across midnight.
 - Historical dates provide access to older islands. Do not accumulate them permanently in the bay.
 
@@ -270,7 +273,7 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 | Recorded stage | Environment and boat behavior |
 | --- | --- |
 | LIGHT | Reed-lined shallows and normal cruising. |
-| DEEP | Sheltered forest channel, closed cabin, and dim cabin lights. Daylight remains daylight. |
+| DEEP | Sheltered channel between rocky banks. Forest grows on the banks above the water. The cabin shutters close and the lights dim. |
 | REM | Coral, bioluminescent plants, and marine companions. |
 | AWAKE | Temporary pause or anchoring and brighter cabin activity. |
 | ASLEEP without stage classification | Neutral open-water passage and neutral island habitat. Preserve asleep duration without inventing a stage. |

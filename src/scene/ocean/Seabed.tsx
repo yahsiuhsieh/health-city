@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { BufferGeometry, Color, Float32BufferAttribute } from "three";
+import { BufferGeometry, Color, Float32BufferAttribute, MeshStandardMaterial } from "three";
 import { useOcean } from "./OceanEnvironment.tsx";
 import { SEABED_LAYER, WATER_LEVEL } from "./layers.ts";
 import { patchSand } from "./sand-material.ts";
@@ -35,8 +35,9 @@ export function seabedGeometry(bed: SeabedData) {
     const depth = bed.depthAt(x,z);
     const shoreDistance=bed.sampleAt(x,z,1)*24;
     // Include the 0.6 m of run-up and the half-diagonal of a 2 m cell under the beach.
-    if (depth >= 12 || (depth>=0 && shoreDistance < -2.4)) continue;
-    cells[j*cols+i] = bed.sampleAt(x,z,2)>0 ? 3 : bed.sampleAt(x,z,5) <= 30 ? 2 : 1;
+    const destination=bed.sampleAt(x,z,2)>.97;
+    if (depth >= 12 || (!destination && depth>=0 && shoreDistance < -2.4)) continue;
+    cells[j*cols+i] = destination && shoreDistance < -3 ? 1 : bed.sampleAt(x,z,2)>0 ? 3 : bed.sampleAt(x,z,5) <= 30 ? 2 : 1;
   }
   for (let j=0;j<rows;j++) for (let i=0;i<cols;i++) {
     const n = j*cols+i, cell = cells[n], x = left+2*i, z = bottom+2*j;
@@ -75,9 +76,21 @@ export function seabedGeometry(bed: SeabedData) {
 
 export function Seabed() {
   const ocean = useOcean();
-  const geometry = useMemo(() => seabedGeometry(ocean.bed), [ocean]);
-  useEffect(() => () => geometry.dispose(), [geometry]);
-  return <mesh name="Seabed" layers-mask={geometry.boundingBox!.max.y <= WATER_LEVEL+.00001 ? 1 << SEABED_LAYER : 1} geometry={geometry} receiveShadow>
-    <meshStandardMaterial key={ocean.bed.texture.uuid} vertexColors roughness={.95} onBeforeCompile={shader => patchSand(shader,ocean,"seabed")} />
-  </mesh>;
+  const surfaces=useMemo(()=>{
+    const bed=seabedGeometry(ocean.bed),material=new MeshStandardMaterial({vertexColors:true,roughness:.95});
+    material.onBeforeCompile=shader=>patchSand(shader,ocean,"seabed");
+    const below:number[]=[],exposed:number[]=[],pos=bed.getAttribute("position"),index=bed.index!;
+    for(let i=0;i<index.count;i+=3){
+      const a=index.getX(i),b=index.getX(i+1),c=index.getX(i+2);
+      const list=Math.max(pos.getY(a),pos.getY(b),pos.getY(c))>WATER_LEVEL?exposed:below;
+      list.push(a,b,c);
+    }
+    const bars=new BufferGeometry();
+    for(const [name,attribute] of Object.entries(bed.attributes))bars.setAttribute(name,attribute);
+    bed.setIndex(below);bars.setIndex(exposed);
+    return {bed,bars,material};
+  },[ocean]);
+  useEffect(()=>()=>{surfaces.bed.dispose();surfaces.bars.dispose();surfaces.material.dispose();},[surfaces]);
+  return <><mesh name="Seabed" layers-mask={1<<SEABED_LAYER} geometry={surfaces.bed} material={surfaces.material} receiveShadow/>
+    {!!surfaces.bars.index!.count && <mesh name="Exposed sandbars" geometry={surfaces.bars} material={surfaces.material} receiveShadow/>}</>;
 }

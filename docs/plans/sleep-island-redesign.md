@@ -8,6 +8,10 @@ The [product specification](../product-spec.md) still controls data behavior. Th
 
 Complete the [ocean redesign](ocean-redesign.md) before this plan. Its [section 13](ocean-redesign.md#13-changes-to-the-sleep-voyage-plan) replaces parts of section 8 below. Use the flat water surface, shared seabed, absorption shader, and wake ribbon. Connect the stage masks and the new voyage path to those systems.
 
+## Delivery status
+
+The synthetic voyage has reached checkpoint B. The user requested the complete voyage after reviewing checkpoint A. The implementation retains the open product decisions in section 20. [Checkpoint B review](../../design/visual-studies/sleep-voyage-v2/checkpoint-b/README.md)
+
 ## 1. User feedback and decisions
 
 ### Feedback on the current scene

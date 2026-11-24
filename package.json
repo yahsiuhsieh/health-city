@@ -13,7 +13,7 @@
     "test:runtime": "vitest run src/worker/*.runtime.test.ts",
     "build": "NODE_ENV=production WRANGLER_SEND_METRICS=false WRANGLER_LOG_PATH=.wrangler/logs vite build",
     "deploy": "npm run build && WRANGLER_SEND_METRICS=false WRANGLER_LOG_PATH=.wrangler/logs wrangler deploy --config dist/healthcity/wrangler.json --keep-vars",
-    "asset:boat": "node scripts/build-boat.mjs",
+    "asset:boat": "node scripts/build-boat.mjs && node scripts/build-boat.mjs --city",
     "asset:port": "node scripts/build-cargo-berth.mjs",
     "asset:building": "node scripts/build-building.mjs",
     "asset:skyscrapers": "node scripts/build-skyscrapers.mjs",

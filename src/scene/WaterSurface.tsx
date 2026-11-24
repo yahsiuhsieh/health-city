@@ -37,7 +37,7 @@ const fragmentShader = /* glsl */`
   uniform vec3 deepColor;
   uniform vec3 shallowTint;
   uniform float nightAmount;
-  uniform float oceanTime, reveal;
+  uniform float oceanTime, reveal,uIslandReveal;
   uniform vec3 skyColor, foamColor, fleckColor, harborTint;
   uniform sampler2D bedMap;
   uniform vec4 bedBounds;
@@ -79,13 +79,13 @@ const fragmentShader = /* glsl */`
     vec2 fineRipple=noiseSamples(small).rg;
     vec2 slope=.04*(fineRipple+noiseSamples(large).rb-1.);
     vec3 stages=vec3(0.);
-    float passage=1.;
     if(hasSleepZones){
       vec4 zone=texture2D(sleepZones,(p-sleepBounds.xy)/sleepBounds.zw);
-      stages=zone.rgb*smoothstep(zone.a-.015,zone.a,reveal);
+      stages=zone.rgb*(zone.a>.97?uIslandReveal:smoothstep(zone.a-.015,zone.a,reveal));
       slope*=1.-.7*stages.g;
-      if(zone.a>.001) passage=smoothstep(zone.a-.018,zone.a+.024,reveal);
     }
+    vec4 bank = texture2D(bedMap,(p-bedBounds.xy)/bedBounds.zw);
+    float cover=bank.b<=0.?1.:bank.b>.97?uIslandReveal:smoothstep(bank.b-.045,bank.b+.008,reveal);
     vec3 water=deepColor;
     if (depth < ${shelfFade[1]}) {
       vec2 offsetUV=sampleUV+slope*.012*smoothstep(0.,1.5,depth);
@@ -97,13 +97,14 @@ const fragmentShader = /* glsl */`
       float tint=smoothstep(.3,1.2,depth)*(1.-smoothstep(2.5,6.,depth));
       water=mix(water,shallowTint,tint*.35*(1.-.5*nightAmount));
     }
-    vec4 bank = texture2D(bedMap,(p-bedBounds.xy)/bedBounds.zw);
     float basin = (1.-smoothstep(24.,33.,p.x)) * smoothstep(-20.,-8.,p.x)
       * (1.-smoothstep(70.,82.,abs(p.y+1.)));
     water = mix(water,harborTint,.25*basin*smoothstep(2.,6.,depth));
     water=mix(water,mix(vec3(.065,.37,.31),vec3(.018,.105,.105),nightAmount),.17*stages.r);
     water=mix(water,mix(vec3(.019,.125,.13),vec3(.009,.045,.051),nightAmount),.62*stages.g);
     water=mix(water,mix(vec3(.014,.44,.44),vec3(.013,.115,.16),nightAmount),.21*stages.b);
+    water=mix(deepColor,water,cover);
+    depth=mix(40.,depth,cover);
     float broad = oceanNoise((p+vec2(.02,0)*oceanTime)/40.) + oceanNoise((p-vec2(0,.02)*oceanTime)/90.)-1.;
     water *= 1.+.035*broad;
     vec3 normal = normalize(vec3(slope.x,1.,slope.y));
@@ -117,7 +118,7 @@ const fragmentShader = /* glsl */`
       water=mix(water,fleckColor,fleckAlpha);
     }
     float distance = bank.g*24.;
-    if (abs(distance) < 2.5 && bank.b <= reveal) {
+    if (abs(distance) < 2.5 && (bank.b>.97?uIslandReveal>0.:bank.b<=reveal)) {
       vec2 wash = shoreWash(p,distance,oceanTime);
       float soft = wash.x*(1.-smoothstep(1.3,3.,depth))*mix(.85,.5,nightAmount);
       float contact = (1.-smoothstep(.05,.15,abs(distance)))*.25;
@@ -126,9 +127,8 @@ const fragmentShader = /* glsl */`
       water = mix(water,foamColor,foam);
     }
     float farDepth = -surfaceZ - ${CAMERA_DEPTH_OFFSET.toFixed(1)};
-    float softBeach = (1.-smoothstep(0.,1.,bank.a))*step(bank.b,reveal);
+    float softBeach = (1.-smoothstep(0.,1.,bank.a))*(bank.b>.97?uIslandReveal:step(bank.b,reveal));
     float horizon = smoothstep(165.,275.,farDepth)*mix(1.,smoothstep(2.,12.,distance),softBeach);
-    if(bank.b>0.)water=mix(deepColor,water,passage);
     gl_FragColor = vec4(water, 1.0);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

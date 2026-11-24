@@ -268,6 +268,7 @@ for (const side of [-1, 1]) {
     if (side < 0) glass.rotation.y = Math.PI;
   }
   ring(.09, .03, [4.05, .95, side * .93], "rail");
+  if(side===1)continue;
   beam([4.05, .87, side * .93], [4.05, .36, side * .93], .034, "rail");
   pathTube([[3.82, .57, side * .93], [3.88, .4, side * .93], [4.05, .33, side * .93],
     [4.22, .4, side * .93], [4.28, .57, side * .93]], .032, "rail");
@@ -280,6 +281,34 @@ for (const radius of [.18, .135, .09]) {
   ring(radius, .018, [3.5, 1.13, .55], "rope").rotation.x = Math.PI / 2;
 }
 
+{
+  const windows=boat.children.filter(child=>child.name==="cabin-window");
+  for(const [i,window] of windows.entries()){
+    window.geometry.computeBoundingBox();
+    const dims=window.geometry.boundingBox.getSize(new THREE.Vector3());
+    const sideways=dims.x>dims.z;
+    const [x,y,z]=window.position.toArray();
+    const exterior=sideways?Math.sign(z):(x> -2?1:-1);
+    const thick=.035,top=y+dims.y/2;
+    const at=[x+(sideways?0:exterior*.045),top,z+(sideways?exterior*.045:0)];
+    box(sideways?[dims.x+.045,.07,.09]:[.09,.07,dims.z+.045],at,"frame",.01,"shutter-box");
+    const panel=new THREE.BoxGeometry(sideways?dims.x:thick,dims.y,sideways?thick:dims.z,1,12,1).translate(0,-dims.y/2,0);
+    const rgb=[],pos=panel.attributes.position;
+    for(let k=0;k<pos.count;k++){const line=Math.round(-12*pos.getY(k)/dims.y)%2;const c=new THREE.Color(line?"#8f7a55":"#b9a27a");rgb.push(c.r,c.g,c.b);}
+    panel.setAttribute("color",new THREE.Float32BufferAttribute(rgb,3));
+    const shutter=mesh(panel,"hull",at,"cabin-shutter-"+i);shutter.scale.y=.06;
+  }
+  const anchor=new THREE.Group();anchor.name="bow-anchor";anchor.position.set(4.05,.78,1.02);boat.add(anchor);
+  beam([0,.13,0],[0,-.29,0],.034,"rail",anchor);
+  ring(.062,.018,[0,.16,0],"rail",anchor);
+  for(const sign of [-1,1]){
+    beam([0,-.29,0],[sign*.15,-.22,0],.04,"rail",anchor);
+    const fluke=mesh(new THREE.ConeGeometry(.087,.19,4),"rail",[sign*.15,-.15,0],"fluke",anchor);
+    fluke.rotation.z=-sign*.25;
+  }
+  mesh(new THREE.SphereGeometry(.18,10,7),"rubber",[-2.06,5.12,.23],"anchor-ball");
+  cylinder(.071,.14,[3.72,1.65,.4],"cream","anchor-light");
+}
 if (cityBerth) {
   // Preserve the reviewed deck arrangement on the longer 16 m hull.
   boat.scale.set(1.80,1.42,1.67);
@@ -295,20 +324,6 @@ if (cityBerth) {
     const blade=box([.07,.24,.11],[0,.13,0],"brass",.02,"blade");
     const pivot=new THREE.Group();pivot.rotation.x=i*2*Math.PI/3;pivot.add(blade);prop.add(pivot);
   }
-  const windows=boat.children.filter(child=>child.name==="cabin-window");
-  for(const [i,window] of windows.entries()){
-    window.geometry.computeBoundingBox();
-    const dims=window.geometry.boundingBox.getSize(new THREE.Vector3());
-    const sideways=dims.x>dims.z;
-    const [x,y,z]=window.position.toArray();
-    box(sideways?[dims.x,.07,.09]:[.09,.07,dims.z],
-      [x,y+dims.y/2+.025,z],"frame",.01,"cabin-shutter-"+i);
-  }
-  const anchor=new THREE.Group();anchor.name="bow-anchor";anchor.position.set(4.05,.72,.95);boat.add(anchor);
-  beam([0,.18,0],[0,-.36,0],.043,"rail",anchor);
-  pathTube([[-.22,-.19,0],[-.15,-.35,0],[0,-.40,0],[.15,-.35,0],[.22,-.19,0]],.045,"rail",false,anchor);
-  mesh(new THREE.SphereGeometry(.11,10,6),"rubber",[-2.06,5.12,.23],"anchor-ball");
-  cylinder(.065,.14,[-2.06,5.60,.10],"cream","anchor-light");
   const socket = new THREE.Object3D();
   socket.name = "captain-socket";
   bridgeWing.geometry.computeBoundingBox();

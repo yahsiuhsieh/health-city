@@ -1,3 +1,4 @@
+import { seaLife } from "./sleep-sea-life.mjs";
 import { writeFile } from "node:fs/promises";
 import * as T from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
@@ -90,7 +91,7 @@ function model(name,variant) {
     profile([[.15,0],[.10,.34],[.48,.39],[.61,.47],[.54,.53],[.26,.6],[0,.61]],14,0,0,0,variant?"#ce8094":"#d996a6",.22);
     for(let i=0;i<8;i++)lobe(.37*Math.cos(i*2.4),.55,.37*Math.sin(i*2.4),.047,.022,.047,"#eab9b7");
   }else if(name==="sponge-tubes" || name==="coral-tube"){
-    for(let i=0;i<5;i++){
+    for(let i=0;i<4;i++){
       const a=i*2.4+tilt,r=i===0?0:.24,h=(name==="coral-tube"?.55:.74)*(.72+.29*Math.cos(i));
       profile([[.09,0],[.13,h*.7],[.15,h-.04],[.14,h],[.097,h+.014],[.078,h-.16],[0,h-.20]],6,r*Math.cos(a),0,r*Math.sin(a),name==="coral-tube"?"#ec985f":i%2?"#9073c6":"#775da9");
     }
@@ -113,10 +114,28 @@ function fitting(name,geometry,color,y){
   const mesh=new T.Mesh(geometry,new T.MeshStandardMaterial({color,roughness:.88}));
   mesh.name=name;mesh.position.y=y;buoy.add(mesh);
 }
-fitting("float",new T.CylinderGeometry(.29,.46,.66,12),"#e6ae46",.29);
-fitting("mast",new T.CylinderGeometry(.055,.08,1.15,8),"#c38936",1.04);
-fitting("wake-buoy-lens",new T.SphereGeometry(.14,9,6),"#fff1b5",1.63);
-fitting("wake-buoy-topmark",new T.TorusGeometry(.17,.032,5,12),"#c68b35",1.96);
+fitting("float",new T.LatheGeometry([[.32,-.33],[.46,-.26],[.5,-.13],[.5,.14],[.46,.28],[.35,.32],[0,.32]].map(([r,y])=>new T.Vector2(r,y)),16),"#efe2c4",.25);
+for(const y of [.13,.43])fitting("terracotta-band",new T.CylinderGeometry(.503,.503,.065,16),"#c86a45",y);
+fitting("waterline",new T.CylinderGeometry(.486,.475,.07,16),"#4d5a58",.04);
+fitting("mast",new T.CylinderGeometry(.04,.079,.78,10),"#ae8c55",.96);
+fitting("lantern-foot",new T.CylinderGeometry(.17,.12,.09,12),"#bc9758",1.37);
+fitting("wake-buoy-lens",new T.CylinderGeometry(.105,.105,.18,12),"#ffc46b",1.5);
+fitting("lantern-cap",new T.ConeGeometry(.17,.12,12),"#bc9758",1.64);
+const sun=new T.Shape();sun.absarc(0,0,.175,0,Math.PI,false);sun.closePath();
+fitting("wake-buoy-topmark",new T.ExtrudeGeometry(sun,{depth:.035,bevelEnabled:false}),"#efe2c4",1.72);
+for(const a of [-.65,0,.65])fitting("sun-ray",new T.BoxGeometry(.032,.085,.03).rotateZ(a).translate(-.21*Math.sin(a),.21*Math.cos(a),0),"#efe2c4",1.72);
+for(let i=0;i<3;i++)fitting("chain",new T.TorusGeometry(.055,.013,4,8).rotateY(i*Math.PI/2),"#4d5a58",-.10-i*.08);
+const fittings=[];
+for(const m of [...buoy.children]){
+  if(m.name.startsWith("wake-buoy-"))continue;
+  const g=m.geometry.index?m.geometry.toNonIndexed():m.geometry.clone();m.updateMatrix();g.applyMatrix4(m.matrix);
+  g.deleteAttribute("uv");const c=m.material.color,rgb=[];
+  for(let i=0;i<g.attributes.position.count;i++)rgb.push(c.r,c.g,c.b);
+  g.setAttribute("color",new T.Float32BufferAttribute(rgb,3));fittings.push(g);buoy.remove(m);
+}
+const float=new T.Mesh(mergeVertices(mergeGeometries(fittings)),matte);float.name="buoy-fittings";buoy.add(float);
 scene.add(buoy);
 globalThis.FileReader=class{readAsArrayBuffer(blob){blob.arrayBuffer().then(result=>{this.result=result;this.onloadend?.()});}};
 await writeFile(new URL("../public/models/sleep-world.glb",import.meta.url),new Uint8Array(await new GLTFExporter().parseAsync(scene,{binary:true})));
+
+await writeFile(new URL("../public/models/sea-life.glb",import.meta.url),new Uint8Array(await new GLTFExporter().parseAsync(seaLife(),{binary:true})));

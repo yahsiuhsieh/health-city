@@ -4,7 +4,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Group, InstancedBufferAttribute,InstancedMesh,Mesh,MeshDepthMaterial,MeshStandardMaterial,Object3D,RGBADepthPacking,Vector3 } from "three";
 import type { Replay } from "../../core/replay.ts";
 import { useOcean } from "../ocean/OceanEnvironment.tsx";
-import { SEABED_LAYER,WATER_LEVEL } from "../ocean/layers.ts";
+import { DRY_LAYER,SEABED_LAYER,WATER_LEVEL } from "../ocean/layers.ts";
 import { patchSand } from "../ocean/sand-material.ts";
 import { voyage } from "../sleep-voyage.ts";
 import { SYNTHETIC_SESSION } from "./session.ts";
@@ -45,7 +45,7 @@ export function StageEnvironments({follow,offset,replay}:{follow:boolean;offset:
       g.setAttribute("routeS",new InstancedBufferAttribute(new Float32Array(props.map(p=>p.routeS)),1));
       const mesh=new InstancedMesh(g,mat,props.length),dummy=new Object3D();
       mesh.name=name;mesh.castShadow=!underwater;mesh.receiveShadow=true;mesh.customDepthMaterial=depth;
-      if(underwater)mesh.layers.set(SEABED_LAYER);
+      if(underwater)mesh.layers.set(SEABED_LAYER);else if(tree)mesh.layers.set(DRY_LAYER);
       props.forEach((p,i)=>{
         const floor=WATER_LEVEL-ocean.bed.depthAt(p.x,p.z);
         const seated=underwater||grass;

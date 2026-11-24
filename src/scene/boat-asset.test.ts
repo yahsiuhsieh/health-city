@@ -17,14 +17,18 @@ describe("representative boat delivery asset", () => {
     for (const name of ["cargo-hull", "open-cargo-deck", "cargo-hatches", "cargo-crane", "wheelhouse"]) {
       expect(model.scene.getObjectByName(name), name).toBeDefined();
     }
+    let shutters=0;
+    for(const name of ["bow-anchor","anchor-ball","anchor-light"])expect(model.scene.getObjectByName(name),name).toBeDefined();
     let windows = 0;
     let triangles = 0;
     model.scene.traverse(child => {
       if (!(child instanceof Mesh)) return;
       expect(child.material).toBeInstanceOf(MeshStandardMaterial);
+      if(child.name.startsWith("cabin-shutter"))shutters++;
       if (child.name.startsWith("cabin-window")) windows++;
       triangles += (child.geometry.index?.count ?? child.geometry.attributes.position!.count) / 3;
     });
+    expect(shutters).toBe(windows);
     expect(windows).toBeGreaterThan(12);
     expect(triangles).toBeLessThan(100000);
     expect(file.byteLength).toBeLessThan(3 * 1024 * 1024);
