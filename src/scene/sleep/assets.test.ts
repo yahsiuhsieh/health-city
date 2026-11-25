@@ -26,12 +26,19 @@ it("loads the sleep assets within the mesh and delivery budgets",async()=>{
       Object.assign(limits,{"wake-buoy":1200,"wake-buoy-lens":1200,"wake-buoy-topmark":1200});
     }else{
       expect(animations.map(clip=>clip.name)).toEqual(["bow-ride","leap"]);
-      Object.assign(limits,{ray:900,whale:2400,shark:1600,"school-fish":60,"flying-fish":150,booby:350,tern:350,dolphin:700});
-      for(const [name,axis,size] of [["ray","z",4.5],["whale","x",13],["shark","x",9],["dolphin","x",2.4],
-        ["school-fish","x",.33],["booby","z",1.4],["tern","z",.8],["flying-fish","x",.45]] as const){
+      Object.assign(limits,{ray:900,whale:2400,shark:1600,"flying-fish":150,booby:350,tern:350,dolphin:700});
+      for(const [name,axis,size] of [["ray","z",8],["whale","x",16],["shark","x",12],["dolphin","x",4],
+        ["booby","z",2.8],["tern","z",1.8],["flying-fish","x",.9],["flying-fish","z",1]] as const){
         const actual=new Box3().setFromObject(scene.getObjectByName(name)!).getSize(new Vector3())[axis];
-        expect(Math.abs(actual/size-1),name).toBeLessThan(.1);
+        expect(actual,name).toBeCloseTo(size,4);
+        scene.getObjectByName(name)!.traverse(obj=>{
+          if(!(obj instanceof Mesh))return;
+          const weight=obj.geometry.getAttribute("_along");
+          expect(weight.count).toBe(obj.geometry.getAttribute("position").count);
+          for(const value of weight.array)if(value<-.00001||value>1.00001)throw Error("Invalid head-to-tail coordinate");
+        });
       }
+      expect(scene.getObjectByName("school-fish")).toBeUndefined();
       for(const name of ["ray-body","ray-wing-left","ray-wing-right","ray-tail","whale-body","whale-flukes","shark-body","shark-dorsal","shark-tail"])
         expect(scene.getObjectByName(name)).toBeDefined();
     }

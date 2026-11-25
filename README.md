@@ -9,7 +9,7 @@ A manual day replay for HRV, steps, and total energy is available behind a Worke
 
 The local homepage now uses React, React Three Fiber, Three.js, and Vite.
 It loads one reusable working boat from `public/models/city-working-boat.glb`.
-The 20 m working boat moors at the outer quay. The freighter uses the inner cargo berth with its crane, forklift, and flatbed truck.
+The 20 m working boat and the 58 m freighter share one harbor. The freighter uses the cargo berth with its crane, forklift, and flatbed truck.
 A street graph connects Ridge Road, Market Avenue, the civic plaza, and the waterfront. Permanent mid-rise buildings share blocks with 30 fixed HRV plots.
 The adjacent skyline uses five tower models: Glass spire, Deco crown, Concrete terraces, Ribbon tower, and Brick crown.
 Use **Scene view** to open the skyline, harbor, Market crossing, Market Avenue, or an individual design. Drag to orbit. Right-drag to pan. Scroll to zoom.
@@ -27,14 +27,17 @@ This threshold is provisional. Primary-desktop measurements must calibrate it.
 
 Day and Night are explicit material-review controls. They do not represent historical daylight or weather.
 The Account link opens the authentication status page. The default scene uses the Worker's public synthetic HRV response.
-Sleep Voyage v3 is complete for the synthetic session. [Final acceptance record](design/visual-studies/sleep-voyage-v3/checkpoint-c/README.md#final-acceptance)
+The user approved the original Sleep Voyage v3 synthetic session on November 23, 2026. [Original acceptance record](design/visual-studies/sleep-voyage-v3/checkpoint-c/README.md#final-acceptance)
+
+The user approved Checkpoint F on November 24, 2026, completing the harbor, wildlife, and card revisions. [Review 1 delivery record](docs/plans/sleep-voyage-v3-review-1.md)
 
 The synthetic sleep voyage runs from November 11 at 23:00 to November 12 at 06:30, Chicago time.
-Select **Sleep voyage** to follow the boat. Choose **Inspect sleep voyage**, then **Open voyage chart**. Clicking the working boat on either voyage date or the revealed island also opens the chart.
+Select **Sleep voyage** to follow the boat. Choose **Inspect sleep voyage**, then **Open sleep voyage**. Clicking the working boat on either voyage date or the revealed island also opens the card.
 The chart pauses the replay when it opens. Press **Play** to watch the track grow, or move the replay slider. Select a colored interval or an anchor to inspect its stage, times, and duration.
-The chart covers the full session across midnight. Its elapsed time includes the eight-minute awakening. Stage shares and island area use the 442 asleep minutes. [Chart and final checks](design/visual-studies/sleep-voyage-v3/checkpoint-c/README.md#voyage-chart)
+The Sleep voyage card follows replay across midnight. The timeline and stage totals show the part of the session that has elapsed. At arrival, the card shows 7 h 22 min asleep and a 10,608 m² island. [Desktop and phone review](design/visual-studies/sleep-voyage-v3/checkpoint-f/README.md)
+
 Select **Sleep island** to inspect the coral cay, reef platform, and jetty. Click the awakening buoy at 03:04 to inspect the interruption.
-The outbound route measures 1,001.07 m, including the final 1 m slide alongside the jetty. At 06:40, the boat leaves the island, turns offshore, and returns to the working quay at 07:40. [Open-sea review](design/visual-studies/sleep-voyage-v3/open-sea/README.md)
+The 911.14 m outbound route passes north of the outer reef. The boat reaches the south jetty heading west. At 06:40, it casts off and returns south of the reef. It reaches the working quay at 07:40. [Harbor and route review](design/visual-studies/sleep-voyage-v3/checkpoint-d/README.md)
 The harbor review includes the berth, departure, and return under both lighting settings. [Checkpoint A](design/visual-studies/sleep-voyage-v3/checkpoint-a/README.md)
 The island review shows six cay sizes at a common scale and the boat leaving the jetty. [Checkpoint B](design/visual-studies/sleep-voyage-v3/checkpoint-b/README.md)
 The recorded Google Health sleep feed still needs a scene integration.
@@ -117,7 +120,7 @@ The models share units and orientation. Separate window materials support night 
 `scripts/build-pedestrian.mjs` exports seven pedestrian GLBs with named limb joints for the walking pose.
 `scripts/build-vehicles.mjs` exports four vehicle GLBs with named wheel pivots and lamp materials.
 
-The sleep voyage uses one metre per model unit. The flying fish measures 0.45 m in the scene so its fins remain visible during a glide. Its reference length is 0.30 m. Birds, marine companions, and school fish use their specified scale. The [Checkpoint C review](design/visual-studies/sleep-voyage-v3/checkpoint-c/README.md) includes day and night captures.
+The sleep voyage uses one metre per model unit. Birds and marine animals use a readability scale. The flying fish measures 0.9 m long with a 1 m fin span. The largest companion, the humpback, measures 16 m. [Checkpoint E wildlife review](design/visual-studies/sleep-voyage-v3/checkpoint-e/README.md)
 
 Regenerate an asset after an authoring change:
 

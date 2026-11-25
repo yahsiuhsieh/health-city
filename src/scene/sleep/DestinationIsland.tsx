@@ -39,15 +39,19 @@ function colonyCrown(src:BufferGeometry,name:string){
   tint.multiplyScalar(1/color.count);
   const pos:number[]=[],rgb:number[]=[],indices:number[]=[];
   const table=name.includes("table")||name.includes("plate");
-  for(const [r,h] of [[table?.18:.37,0],[.5,table?.40:.23],[.25,table?.53:.50]]){
-    for(let i=0;i<4;i++){
-      const a=i*Math.PI/2;
-      pos.push(r!*Math.cos(a),h!,r!*Math.sin(a));rgb.push(tint.r,tint.g,tint.b);
+  const sides=6;
+  for(const [ring,[r,h]] of [[table?.18:.34,0],[.5,table?.48:.27]].entries()){
+    for(let i=0;i<sides;i++){
+      const a=i*2*Math.PI/sides,shape=1+.13*Math.sin(3*a+.7);
+      const light=.65+.11*ring+.12*Math.cos(a+.6);
+      pos.push(shape*r!*Math.cos(a),h!+.05*Math.sin(a)*ring/3,shape*r!*Math.sin(a));
+      rgb.push(tint.r*light,tint.g*light,tint.b*light);
     }
   }
-  for(let i=0;i<4;i++){
-    const j=(i+1)%4;for(const k of [0,4])indices.push(k+i,k+i+4,k+j,k+j,k+i+4,k+j+4);
-    if(i>=2)indices.push(8,8+i,8+i-1);
+  pos.push(.07,table?.60:.68,-.04);rgb.push(tint.r,tint.g,tint.b);
+  for(let i=0;i<sides;i++){
+    const j=(i+1)%sides;
+    indices.push(i,i+sides,j,j,i+sides,j+sides,i+sides,2*sides,j+sides);
   }
   const g=new BufferGeometry();g.setAttribute("position",new Float32BufferAttribute(pos,3));
   g.setAttribute("color",new Float32BufferAttribute(rgb,3));g.setIndex(indices);g.computeVertexNormals();return g;
@@ -79,7 +83,7 @@ function islandModel(land:IslandTerrain,assets:Group,ocean:OceanEnvironment){
     const matrices:Matrix4[]=[],centers:Vector3[]=[];
     const cull=colony || name.startsWith("broadleaf") || name.startsWith("palm");
     for(const [i,p] of items.entries()){
-      dummy.position.set(p.x,p.y+WATER_LEVEL,p.z);dummy.rotation.y=p.yaw;dummy.scale.set(...p.scale);
+      dummy.position.set(p.x,p.y+WATER_LEVEL,p.z);dummy.rotation.set(colony?.13*Math.sin(p.yaw*3):0,p.yaw,colony?.21*Math.cos(p.yaw):0);dummy.scale.set(...p.scale);
       if(low){dummy.updateMatrix();low.setMatrixAt(i,dummy.matrix);}
       if(colony){
         const width=Math.max(extent.x,extent.z);

@@ -1,14 +1,16 @@
-import { Color, Group, InstancedMesh, Mesh, MeshStandardMaterial, MeshBasicMaterial, Object3D, RingGeometry, SphereGeometry } from "three";
-import { DRY_LAYER, SEABED_LAYER, TRANSPARENT_LAYER } from "../ocean/layers.ts";
+import { BufferGeometry, Float32BufferAttribute, InstancedBufferAttribute, PlaneGeometry, DoubleSide, Color, Group, InstancedMesh, Mesh, MeshStandardMaterial, MeshBasicMaterial, Object3D, RingGeometry, SphereGeometry } from "three";
+import { DRY_LAYER, TRANSPARENT_LAYER } from "../ocean/layers.ts";
 import { SYNTHETIC_SESSION as session } from "./session.ts";
 import { routeDistanceAt, routeSpans } from "./timeline.ts";
 import { routeFrame, S_MOUTH } from "./route.ts";
 import { destination } from "./island-preview.ts";
 import { clamp, companionState, dolphinAt, fishAt, lightEvents } from "./wildlife.ts";
 
+import { animalMaterial, type animalMotion } from "./animal-motion.ts";
+
 type Frame=ReturnType<typeof routeFrame>;
 
-export function wildlifeRig(library:Object3D){
+export function wildlifeRig(library:Object3D,waterPass:{value:number}){
   const root=new Group(),pose=new Object3D(),color=new Color(),reef=destination().reef;
   root.name="Stage wildlife";
   const meshes:InstancedMesh[]=[];
@@ -19,22 +21,34 @@ export function wildlifeRig(library:Object3D){
     root.add(batch);meshes.push(batch);return batch;
   }
   const asset=(name:string)=>library.getObjectByName(name) as Mesh;
-  const birds=["booby","tern"].map(name=>pool(name,asset(name),9,DRY_LAYER));
-  const wingTime={value:0};
-  const feathers=(birds[0]!.material as MeshStandardMaterial).clone();
-  feathers.onBeforeCompile=shader=>{
-    shader.uniforms.wingTime=wingTime;
-    shader.vertexShader="uniform float wingTime;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
-      #include <begin_vertex>
-      float wing=max(0.,abs(position.z)-.085);
-      float flap=.66*sin(wingTime*7.+instanceMatrix[3].x*.19);
-      transformed.y+=wing*sin(flap);
-      transformed.z+=sign(position.z)*wing*(cos(flap)-1.);
-    `);
+  const clock={value:0},daylight={value:1},curve={value:0},still={value:0};
+  const skins=new Map<string,MeshStandardMaterial>();
+  function skin(kind:keyof typeof animalMotion,mesh:Mesh){
+    let mat=skins.get(kind);
+    if(!mat){mat=animalMaterial(mesh.material as MeshStandardMaterial,kind,clock,waterPass,daylight,
+      kind==="tern"||kind==="booby"||kind==="flying-fish"?still:curve);skins.set(kind,mat);}
+    mesh.material=mat;
+  }
+  const birds=(["booby","tern"] as const).map(name=>{
+    const bird=pool(name,asset(name),9,DRY_LAYER);skin(name,bird);return bird;
+  });
+  const fish=pool("Flying fish",asset("flying-fish"),32,DRY_LAYER),pod=pool("Dolphin pod",asset("dolphin"),10);
+  fish.geometry=fish.geometry.clone();
+  const beats=new InstancedBufferAttribute(new Float32Array(32),1);
+  fish.geometry.setAttribute("launchBeat",beats);
+  skin("flying-fish",fish);skin("dolphin",pod);
+  const shadowMaterial=new MeshBasicMaterial({color:"#0c2837",transparent:true,depthWrite:false});
+  shadowMaterial.onBeforeCompile=shader=>{
+    shader.vertexShader="varying vec2 shadowUv;\n"+shader.vertexShader.replace("#include <begin_vertex>","#include <begin_vertex>\nshadowUv=uv*2.-1.;");
+    shader.fragmentShader="varying vec2 shadowUv;\n"+shader.fragmentShader.replace("#include <color_fragment>",
+      "diffuseColor.a *= .27*(1.-smoothstep(.1,1.,length(shadowUv)));");
   };
-  for(const bird of birds)bird.material=feathers;
-  const fish=pool("Flying fish",asset("flying-fish"),32),pod=pool("Dolphin pod",asset("dolphin"),12);
-  const school=pool("Silver school",asset("school-fish"),216,SEABED_LAYER);
+  const shadowGeometry=new PlaneGeometry(2,2).rotateX(-Math.PI/2);
+  const shadows=pool("Seabird shadows",new Mesh(shadowGeometry,shadowMaterial),9,TRANSPARENT_LAYER);
+  const wakeGeometry=new BufferGeometry();
+  wakeGeometry.setAttribute("position",new Float32BufferAttribute([0,0,0,-2,0,.62,-1.56,0,.40,0,0,0,-1.56,0,-.40,-2,0,-.62],3));
+  const wakeMaterial=new MeshBasicMaterial({color:"#b1d3d8",transparent:true,opacity:.56,depthWrite:false,side:DoubleSide});
+  const wakes=pool("Surfacing wakes",new Mesh(wakeGeometry,wakeMaterial),16,TRANSPARENT_LAYER);
   const ringGeometry=new RingGeometry(.89,1,28).rotateX(-Math.PI/2);
   const foam=new MeshBasicMaterial({color:"#deeee6",transparent:true,opacity:.62,depthWrite:false});
   const dropGeometry=new SphereGeometry(1,6,4),glow=new MeshBasicMaterial({color:"#4fe3c1",toneMapped:false});
@@ -42,13 +56,26 @@ export function wildlifeRig(library:Object3D){
   ringFoam.onBeforeCompile=shader=>{
     shader.fragmentShader=shader.fragmentShader.replace("#include <color_fragment>","diffuseColor.a *= vColor.r;");
   };
+  const mistGeometry=new PlaneGeometry(1,1);
+  const mistMaterial=new MeshBasicMaterial({color:"#e0ebea",transparent:true,depthWrite:false,opacity:.44});
+  mistMaterial.onBeforeCompile=shader=>{
+    shader.vertexShader="varying vec2 mistUv;\n"+shader.vertexShader.replace("#include <project_vertex>",`
+      mistUv=2.*uv-1.;
+      vec4 mvPosition=modelViewMatrix*instanceMatrix[3];
+      mvPosition.xy+=position.xy*vec2(length(instanceMatrix[0].xyz),length(instanceMatrix[1].xyz));
+      gl_Position=projectionMatrix*mvPosition;`);
+    shader.fragmentShader="varying vec2 mistUv;\n"+shader.fragmentShader.replace("#include <color_fragment>",
+      "diffuseColor.a*=vColor.r*(1.-smoothstep(.05,1.,dot(mistUv,mistUv)));");
+  };
+  const mist=pool("Whale blow mist",new Mesh(mistGeometry,mistMaterial),32,TRANSPARENT_LAYER);
+  mist.renderOrder=3;
   const rings=pool("Surface rings",new Mesh(ringGeometry,ringFoam),48,TRANSPARENT_LAYER);
   const drops=pool("Surface spray",new Mesh(dropGeometry,foam),48,DRY_LAYER);
   const sparks=pool("REM plankton",new Mesh(dropGeometry,glow),144,TRANSPARENT_LAYER);
   const animals=(["ray","shark","whale"] as const).map(kind=>{
     const model=asset(kind).clone(true);model.visible=false;root.add(model);
-    return {kind,model,tail:model.getObjectByName(kind==="whale"?"whale-flukes":kind+"-tail")!,
-      left:model.getObjectByName("ray-wing-left"),right:model.getObjectByName("ray-wing-right")};
+    model.traverse(obj=>{if(obj instanceof Mesh)skin(kind,obj);});
+    return {kind,model};
   });
   function place(f:Frame,along:number,across:number,y:number){
     pose.position.set(f.x+f.tx*along+f.nx*across,y,f.z+f.tz*along+f.nz*across);
@@ -74,9 +101,20 @@ export function wildlifeRig(library:Object3D){
       pose.scale.set(size,size*(2.1-age),size);stamp(drops);
     }
   }
+  function blow(f:Frame,x:number,z:number,cycle:number){
+    for(let i=0;i<28;i++){
+      const age=(cycle-i*.009)/.62;
+      if(age<0||age>=1)continue;
+      const spread=age*(.35+.75*(i%7)/6),angle=2.4*i;
+      const y=.18+3.65*Math.sin(age*1.65)*(.82+.18*(i%5)/4);
+      if(!place(f,x+spread*Math.cos(angle)-.43*age,z+spread*Math.sin(angle),y))continue;
+      const w=.17+age*.92;pose.scale.set(w,w*(1.65-.5*age),1);
+      color.setScalar(1-age);mist.setColorAt(mist.count,color);stamp(mist);
+    }
+  }
   const events=lightEvents(session);
   function update(t:number,night:number){
-    wingTime.value=t/190;
+    clock.value=t/190;daylight.value=1-night;
     for(const batch of meshes)batch.count=0;
     for(const {model} of animals)model.visible=false;
     const span=t<0?undefined:routeSpans(session).find(s=>t<s.end);
@@ -96,7 +134,11 @@ export function wildlifeRig(library:Object3D){
         if(!place(f,x,z,y+.07))continue;
         pose.rotation.y-=angle+Math.PI/2;pose.rotation.x=.18*Math.sin(angle);
         pose.rotation.z=diving?(age<.76?-1.15:.83)*Math.sin(Math.PI*clamp(age/1.3)):.04*Math.sin(a*5+i);
-        pose.scale.z=.85+.15*Math.cos(a*7+i);stamp(birds[i%2]!);
+        stamp(birds[i%2]!);
+        if(place(f,x-.24*y,z-.32*y,.045)){
+          pose.rotation.y-=angle;
+          pose.scale.set(.45+y*.04,1,(i%2?.8:1.22)+y*.06);stamp(shadows);
+        }
       }
       for(const e of active){
         const age=(t-e.start)/190;
@@ -112,25 +154,31 @@ export function wildlifeRig(library:Object3D){
             ring(e.frame,touch.along,touch.across,lift-contact*e.duration,.22,3.8);
           }
           if(p.progress<0||p.progress>1||!place(e.frame,p.along,p.across,p.height))continue;
+          beats.setX(fish.count,1-clamp(p.progress/.21));
           pose.rotation.y-=e.side*.95;pose.rotation.z=.12*Math.cos(Math.PI*p.progress);stamp(fish);
         }
       }
     }
+    beats.needsUpdate=true;
     const state=companionState(session,t);
     if(state&&state.fade>0 && d>S_MOUTH+12){
       const {side,across,kind,fade,cycle,special}=state,z=side*across,along=-1.7;
+      const past=routeFrame(Math.max(0,d-6)),ahead=routeFrame(d+1);
+      curve.value=3.6*(past.tx*ahead.tz-past.tz*ahead.tx)+.12*Math.sin(state.a*.53);
       for(const animal of animals){
-        // The depth value follows the whale's back. Its origin lies below the back.
-        const y=kind==="whale"?state.height-1.42+1.65*state.surface:state.height;
+        // Depth is measured at the back. The mesh origin lies below it.
+        const y=kind==="whale"?state.height-1.89+.9*state.surface:kind==="shark"?state.height-1.08:state.height;
         if(kind!==animal.kind||!place(f,along,z,y))continue;
         const {model}=animal;model.visible=true;model.position.copy(pose.position);model.scale.setScalar(asset(kind).scale.x*fade);
-        model.rotation.set(kind==="ray"?state.roll:0,f.yaw,kind==="whale"?.77*state.breach-.40*state.surface*Math.sin(cycle*3.34):0,"YXZ");
-        if(kind==="ray"){animal.left!.rotation.x=state.wing;animal.right!.rotation.x=-state.wing;}
-        if(kind==="whale")animal.tail.rotation.z=.65*state.surface+.12*Math.sin(state.a*3);
-        else animal.tail.rotation.y=state.tail;
+        model.rotation.set(kind==="ray"?state.roll:0,f.yaw,kind==="whale"?.95*state.breach-.55*state.dive:0,"YXZ");
+      }
+      function wake(x:number,across:number,size:number){
+        if(place(f,x,across,.045)){pose.scale.setScalar(size);stamp(wakes);}
       }
       if(kind==="whale"){
-        spray(f,along+3.2,z,cycle/.73,17,3.65,1.2);
+        if(state.surface>.25)wake(along+2,z,1.9*state.surface);
+        if(state.dive>.2)wake(along-6,z,1.35*state.dive);
+        blow(f,along+3.2,z,cycle);
         spray(f,along,z,(special-.73)/.68,26,3.1,4.6);
         ring(f,along+2,z,cycle,2.6);ring(f,along,z,special-.73,4.8);
       }else if(kind==="dolphin"){
@@ -138,18 +186,24 @@ export function wildlifeRig(library:Object3D){
           const p=dolphinAt(i,state.a,side);
           if(!place(f,p.along,p.across,p.height))continue;
           pose.rotation.z=p.pitch;pose.scale.setScalar(fade);stamp(pod);
+          if(p.height>-.52)wake(p.along-.7,p.across,.85);
           ring(f,p.along-1,p.across,p.ripple,1.05);
         }
       }else {
         const phase=state.a%(kind==="ray"?2.4:1.8);
-        ring(f,along-1,z+(kind==="ray"?2:0),phase,1.12);
-      }
-      const turn=Math.sin(state.a*.87),flash=Math.pow(Math.abs(Math.cos(state.a*.87)),14);
-      for(let i=0;i<216;i++){
-        const angle=i*2.39996,r=Math.sqrt((i+.5)/216),cx=3.2*r*Math.cos(angle),cz=2*r*Math.sin(angle);
-        if(!place(f,3+cx*Math.cos(turn)-cz*Math.sin(turn),-side*6+cx*Math.sin(turn)+cz*Math.cos(turn),-1.22+.68*Math.sin(i*8.3+a)))continue;
-        pose.rotation.y-=turn+.18*Math.sin(angle+a);pose.scale.setScalar(fade*(.8+.42*((i*13)%19)/18));
-        color.setRGB(.55+.45*flash,.66+.34*flash,.70+.30*flash);school.setColorAt(school.count,color);stamp(school);
+        if(kind==="shark"){
+          wake(along-2.38,z+.43*Math.sin(2*Math.PI*.4*a-2.46),1.15);
+          wake(along-7.05,z+1.18*Math.sin(2*Math.PI*.4*a-4.06),.74);
+        }else{
+          // Track the outermost wing station after its wave and body roll.
+          const rise=.21+1.6*Math.sin(a*Math.PI-1.9-3.4*.53);
+          for(const tip of [-4,4]){
+            const height=state.height+rise*Math.cos(state.roll)-tip*Math.sin(state.roll);
+            const lateral=tip*Math.cos(state.roll)+rise*Math.sin(state.roll);
+            if(height>-.025)wake(along-.73,z+lateral,Math.min(1,.38+height));
+          }
+        }
+        ring(f,along-1,z+(kind==="ray"?3.6:0),phase,1.12);
       }
       if(night)for(let i=0;i<64;i++){
         const pulse=Math.sin(state.a*8.6+i*17.3);
@@ -175,7 +229,9 @@ export function wildlifeRig(library:Object3D){
   }
   function dispose(){
     for(const mesh of meshes)mesh.dispose();
-    ringGeometry.dispose();dropGeometry.dispose();foam.dispose();ringFoam.dispose();glow.dispose();feathers.dispose();
+    ringGeometry.dispose();dropGeometry.dispose();foam.dispose();ringFoam.dispose();glow.dispose();
+    mistGeometry.dispose();mistMaterial.dispose();fish.geometry.dispose();shadowGeometry.dispose();shadowMaterial.dispose();wakeGeometry.dispose();wakeMaterial.dispose();
+    for(const material of skins.values())material.dispose();
   }
   return {root,update,dispose};
 }

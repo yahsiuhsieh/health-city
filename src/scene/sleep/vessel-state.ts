@@ -13,12 +13,6 @@ export function cabinState(session:SleepSession,t:number){
   const held=span?.stage==="AWAKE"?t-span.start:0;
   const anchor=span?.stage==="AWAKE" && span.end-span.start>=240?Math.min(1,held/60,(span.end-t)/60):0;
   return {closed,bright,anchor,
-    swing:Math.PI/30*Math.sin(held*Math.PI/60)*smooth(held/15)*smooth(((span?.end??t)-t)/15),
     entry:anchor>0?smooth((held-22)/3)*(1-smooth((held-28)/14)):0,
     lamps:1-closed+.6*bright,day:.32*closed+1.4*bright,night:.65-.47*closed+.75*bright};
-}
-export function anchoredPose(ship:{x:number;z:number;yaw:number},swing:number){
-  const yaw=ship.yaw+swing;
-  return {x:ship.x+8.05*(Math.cos(ship.yaw)-Math.cos(yaw)),
-    z:ship.z+8.05*(Math.sin(yaw)-Math.sin(ship.yaw)),yaw};
 }

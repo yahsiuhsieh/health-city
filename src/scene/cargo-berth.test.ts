@@ -63,20 +63,40 @@ it("keeps the public quay walk outside the crane sweep and cargo vehicle entranc
   }
 });
 
-it("keeps both harbor entrances open and dredges the turning basin",async()=>{
-  const {OUTER_MOUTH,INNER_MOUTH,turningBasin,armMarks,breakwaterArms}=await import("./city/harbor-plan.ts");
+it("fits the design vessel in the shared basin and entrance",async()=>{
+  const {HARBOR_MOUTH,turningBasin,armMarks,breakwaterArms}=await import("./city/harbor-plan.ts");
   const {basinClearance}=await import("./sleep/clearance.ts");
   const {buildSeabed}=await import("./ocean/seabed.ts");
-  expect(INNER_MOUTH.point).toEqual([27,-6]);
-  expect(turningBasin.radius*2).toBeGreaterThanOrEqual(50);
+  expect(breakwaterArms).toHaveLength(2);
+  expect(turningBasin.radius*2).toBe(96);
   expect(basinClearance(turningBasin.center,turningBasin.radius)).toBeGreaterThanOrEqual(6);
   const heads=breakwaterArms.slice(-2).map(arm=>arm.at(-1)!);
-  const starboard=heads.findIndex(head=>head[1]<OUTER_MOUTH.point[1]);
-  expect(armMarks[2+starboard]).toBe("red");
-  expect(Math.abs(heads[0]![1]-heads[1]![1])-6).toBeGreaterThanOrEqual(30);
+  const starboard=heads.findIndex(head=>head[1]<HARBOR_MOUTH.point[1]);
+  expect(armMarks[starboard]).toBe("red");
+  expect(Math.abs(heads[0]![1]-heads[1]![1])-6).toBeGreaterThanOrEqual(60);
   const bed=buildSeabed();
   try{
-    expect(bed.depthAt(...turningBasin.center)).toBeCloseTo(5);
-    expect(bed.depthAt(...OUTER_MOUTH.point)).toBeGreaterThanOrEqual(4);
+    expect(bed.depthAt(...turningBasin.center)).toBeCloseTo(7,1);
+    expect(bed.depthAt(...HARBOR_MOUTH.point)).toBeGreaterThanOrEqual(8);
   }finally{bed.texture.dispose();}
+});
+
+it("lets the tug-assisted freighter leave with a two-metre margin",async()=>{
+  const {freighterTestPath}=await import("../../tests/freighter-path.ts");
+  const {harborClearance}=await import("./sleep/clearance.ts");
+  const {turningBasin,HARBOR_MOUTH}=await import("./city/harbor-plan.ts");
+  const path=freighterTestPath();
+  for(const [i,p] of path.entries()){
+    const last=path[Math.max(0,i-1)]!;
+    expect(Math.hypot(p.x-last.x,p.z-last.z)).toBeLessThanOrEqual(.5);
+    expect(Math.abs(p.yaw-last.yaw)).toBeLessThanOrEqual(Math.PI/90);
+    expect(harborClearance(p,p.leg==="Cast off","Freighter").minimum).toBeGreaterThanOrEqual(0);
+    if(p.leg==="Turn east"){
+      const offset=Math.hypot(p.x-turningBasin.center[0],p.z-turningBasin.center[1]);
+      expect(offset+Math.hypot(59/2,11/2)+2).toBeLessThan(87/2);
+    }
+  }
+  expect(path.filter(p=>p.leg==="Cast off").at(-1)!.x-path[0]!.x).toBeCloseTo(3,8);
+  expect(path.at(-1)!.yaw).toBe(0);
+  expect(path.at(-1)!.x-59/2-2).toBeGreaterThan(HARBOR_MOUTH.point[0]);
 });

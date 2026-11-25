@@ -99,10 +99,10 @@ export function App() {
   const sleepContext=sleepView||chartOpen;
   const inspectButton=useRef<HTMLButtonElement>(null);
   const openChart=()=>{replay.pause();setSelected("chart");};
-  const closeChart=()=>{
+  const closeChart=useCallback(()=>{
     setSelected(null);
     requestAnimationFrame(()=>inspectButton.current?.focus({preventScroll:true}));
-  };
+  },[]);
   const showDeparture=()=>{
     const first=SYNTHETIC_DAYS.find(item=>item.date===departureDate)!;
     const next=createReplay(first.durationSeconds);
@@ -195,7 +195,7 @@ export function App() {
     </header>
 
     <section className={chartOpen?"world has-chart":"world"} aria-label="Interactive HealthCity scene">
-      <div className={inspectWalk || roadView ? "scene-heading harbor-activity-heading" : "scene-heading"}>
+      <div className={sleepView ? "scene-heading voyage-scene-heading" : inspectWalk || roadView ? "scene-heading harbor-activity-heading" : "scene-heading"}>
         <h1>{cityPreview ? cameraCommand.view==="walk"?"Market crossing":cameraCommand.view==="detail"?"Working boat":cameraCommand.view==="world"?"City overview":cameraCommand.view==="skyline"?"Waterfront block":sceneTitle : sceneTitle}</h1>
         {sleepView && <p>{offset===null?"Demo voyage · Nov 11–12":sleepLabel(journey.stage)+" · Synthetic sleep"}</p>}
         {sleepView && offset===null && usingExamples && <button onClick={showDeparture}>View Nov 11 departure</button>}

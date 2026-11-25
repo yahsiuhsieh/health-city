@@ -1,5 +1,5 @@
 import { DataTexture, DataUtils, HalfFloatType, LinearFilter, RGBAFormat, Vector4 } from "three";
-import { breakwaterArms } from "../city/harbor-plan.ts";
+import { breakwaterArms, HARBOR_MOUTH } from "../city/harbor-plan.ts";
 import { harborWorks,coast as defaultCoast } from "../coastline.ts";
 
 import type { Point } from "../loop-path.ts";
@@ -143,30 +143,35 @@ export function buildSeabed({ coastline: coast = defaultCoast, extraLand = [], f
   }
   if(city.length) addLand(city);
   if(coast===defaultCoast){
-    const perimeter:Point[]=[...breakwaterArms[2],...[...breakwaterArms[3]].reverse()];
-    const basin=landMask(perimeter,bounds,width,height);
-    const xs=perimeter.map(p=>p[0]),zs=perimeter.map(p=>p[1]);
-    const west=Math.floor((Math.min(...xs)-50-left)/spacing),east=Math.ceil((Math.max(...xs)+50-left)/spacing);
-    const south=Math.floor((Math.min(...zs)-50-bottom)/spacing),north=Math.ceil((Math.max(...zs)+50-bottom)/spacing);
-    for(let iz=Math.max(0,south);iz<Math.min(height,north);iz++){
+    const perimeter:Point[]=[...breakwaterArms[0],...[...breakwaterArms[1]].reverse()];
+    const inside=landMask(perimeter,bounds,width,height);
+    const shore=landMask(city,bounds,width,height);
+    const [mx,mz]=HARBOR_MOUTH.point;
+    const rockEdges=breakwaterArms.flatMap(arm=>arm.slice(1).map((end,i)=>({start:arm[i]!,end})));
+    for(let iz=0;iz<height;iz++){
       const z=bottom+(iz+.5)*spacing;
-      for(let ix=Math.max(0,west);ix<Math.min(width,east);ix++){
+      if(z < -134 || z > 108)continue;
+      for(let ix=0;ix<width;ix++){
         const x=left+(ix+.5)*spacing,n=iz*width+ix;
-        if(x<25)continue;
-        let d=0;
-        if(!basin[n]){
-          let nearest=Infinity;
-          for(let i=0;i<perimeter.length;i++){
-            const a=perimeter[i]!,b=perimeter[(i+1)%perimeter.length]!;
-            const dx=b[0]-a[0],dz=b[1]-a[1];
-            const u=clamp(((x-a[0])*dx+(z-a[1])*dz)/(dx*dx+dz*dz),0,1);
-            nearest=Math.min(nearest,(x-a[0]-u*dx)**2+(z-a[1]-u*dz)**2);
-          }
-          d=Math.sqrt(nearest);
+        if(x < -25 || x > mx+24 || shore[n])continue;
+        let rubbleDistance=Infinity;
+        for(const {start:a,end:b} of rockEdges){
+          const dx=b[0]-a[0],dz=b[1]-a[1];
+          const u=clamp(((x-a[0])*dx+(z-a[1])*dz)/(dx*dx+dz*dz),0,1);
+          rubbleDistance=Math.min(rubbleDistance,(x-a[0]-u*dx)**2+(z-a[1]-u*dz)**2);
         }
-        const blend=clamp((x-25)/35,0,1)*clamp((48-d)/18,0,1);
-        const depth=5+d*(.16+.034*Math.sin(x*.11+z*.09));
-        data[n*4]=data[n*4]!+(depth/40-data[n*4]!)*blend;
+        rubbleDistance=Math.sqrt(rubbleDistance);
+        const inlet=clamp(1-Math.hypot(x-mx,Math.max(0,Math.abs(z-mz)-34.4))/24,0,1);
+        const mask=inside[n]?1:Math.max(inlet,clamp(1-rubbleDistance/9,0,1));
+        const base=data[n*4]!*40;
+        const basinDepth=7+1.8*clamp((x-mx+45)/38,0,1);
+        const coastalBlend=clamp((shoreDistance[n]!-8)/8,0,1);
+        const dredged=base+coastalBlend*(inside[n]?1:inlet)*(basinDepth-base);
+        const toeDepth=Math.min(dredged,Math.max(.15,(rubbleDistance-1.4)*2.4));
+        const depth=dredged+(toeDepth-dredged)*coastalBlend;
+        data[n*4]=depth/40;
+        data[n*4+2]=-mask;
+        if(rubbleDistance<4)data[n*4+3]=2;
       }
     }
   }

@@ -35,6 +35,23 @@ it("restores all four encounters and keeps the animals near the surface",()=>{
   }
   expect(companionState(session,14800)).toBeNull();
 });
+it("keeps every pod member and the whale's back shallow through both REM encounters",()=>{
+  for(const span of session.segments.filter(s=>s.stage==="REM")){
+    const pod=companionState(session,span.start,"dolphin")!.pod;
+    expect(pod).toBeGreaterThanOrEqual(6);expect(pod).toBeLessThanOrEqual(10);
+    const shallow=Array<number>(pod+1).fill(0);
+    let samples=0;
+    for(let t=span.start;t<span.end;t+=2){
+      const whale=companionState(session,t,"whale")!;
+      const heights=Array.from({length:pod},(_,i)=>dolphinAt(i,whale.a,whale.side).height);
+      heights.push(whale.height+.9*whale.surface);
+      heights.forEach((h,i)=>{if(h>=-1.2 && h<=-.2)shallow[i]!++;});
+      samples++;
+    }
+    expect(Math.min(...shallow)/samples).toBeGreaterThanOrEqual(.7);
+  }
+});
+
 it("walks on connected deck edges at 1.2 metres per ambient unit and boards before cast-off",()=>{
   const track=captainTrack(session);
   for(const [i,leg] of track.entries()){

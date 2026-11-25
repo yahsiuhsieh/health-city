@@ -11,7 +11,7 @@ import { destination } from "./sleep/island-preview.ts";
 import { captainTrack } from "./sleep/captain.ts";
 import { SYNTHETIC_SESSION,elapsedSeconds } from "./sleep/session.ts";
 import { voyage } from "./sleep-voyage.ts";
-import { workingQuay,WORK_BOAT_BERTH } from "./city/harbor-plan.ts";
+import { workingQuay } from "./city/harbor-plan.ts";
 import { port } from "./port-layout.ts";
 import { workingLines as fastenings } from "./harbor-layout.ts";
 import { cargoPose } from "./port-motion.ts";
@@ -35,14 +35,16 @@ export function MooringLines({ replay,offset }: { replay: Replay;offset:number|n
     ropes.current.visible=vessel.moored || !!pier;
     if(gangway.current)gangway.current.visible=ropes.current.visible;
     if(!ropes.current.visible)return;
-    const pose = boatPose(vessel.moored?replay.read().seconds:vessel.t+SYNTHETIC_SESSION.startSecondOfDay);
+    const pose = boatPose(vessel.moored?replay.read().seconds:vessel.t+SYNTHETIC_SESSION.startSecondOfDay,true);
     const { ship, segment, from, to, start, end, direction } = rig;
     ship.position.set(vessel.x, pose.y + port.boatTrim, vessel.z);
-    ship.rotation.set(pose.pitch, WORK_BOAT_BERTH.yaw, pose.roll);
+    ship.rotation.set(pose.pitch, vessel.yaw, pose.roll);
     ship.updateMatrix();
     for (const [i, fastening] of fastenings.entries()) {
-      from.fromArray(fastening.fairlead).applyMatrix4(ship.matrix);
-      if(pier)to.set(pier[0]+(fastening.fairlead[0]>0?6.2:-6.2),1.75,pier[1]+.94);
+      from.fromArray(fastening.fairlead);
+      if(pier)from.z=-from.z;
+      from.applyMatrix4(ship.matrix);
+      if(pier)to.set(pier[0]+(fastening.fairlead[0]>0?-6.2:6.2),1.75,pier[1]+.94);
       else to.set(fastening.bollardX, workingQuay.top+.34, workingQuay.edge-.6);
       const fast=offset===null || (pier ? vessel.t>=arrivedAt+(i===0?64:28) : vessel.t>=0 || vessel.t<departures[i]!.end);
       start.copy(from);
@@ -60,9 +62,9 @@ export function MooringLines({ replay,offset }: { replay: Replay;offset:number|n
       }
     }
     if (gangway.current) {
-      if(pier)from.set(pier[0]+.54,1.43,pier[1]+1.35);
+      if(pier)from.set(pier[0]-.54,1.43,pier[1]+1.35);
       else from.set(port.boatX+.54,workingQuay.top+.055,workingQuay.edge-.26);
-      to.set(.54,1.34,-2.53).applyMatrix4(ship.matrix);
+      to.set(.54,1.34,pier?2.53:-2.53).applyMatrix4(ship.matrix);
       direction.subVectors(to,from);
       gangway.current.position.lerpVectors(from,to,.5);
       gangway.current.quaternion.setFromUnitVectors(horizontal,direction.clone().normalize());

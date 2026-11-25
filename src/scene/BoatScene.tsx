@@ -40,9 +40,11 @@ import { addCameraClearance, CAMERA_DEPTH_OFFSET, CAMERA_FAR, CAMERA_NEAR } from
 
 import { VoyageLife } from "./sleep/VoyageLife.tsx";
 import {navigationLights} from "./sleep/navigation-lights.ts";
+import { outerReef } from "./sleep/outer-reef.ts";
+import { coast } from "./coastline.ts";
 import {JETTY_HEAD} from "./sleep/route.ts";
 import { islandRevealAt } from "./sleep/timeline.ts";
-import { anchoredPose,cabinState } from "./sleep/vessel-state.ts";
+import { cabinState } from "./sleep/vessel-state.ts";
 import { SYNTHETIC_SESSION } from "./sleep/session.ts";
 import { destination } from "./sleep/island-preview.ts";
 import { DestinationIsland } from "./sleep/DestinationIsland.tsx";
@@ -90,6 +92,7 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
   const lastShip=useRef(new Vector3());
   const lastYaw=useRef(0),lastWidth=useRef(1),lastIsland=useRef(0);
   const followedReplay = cameraCommand.view === "sleep" || cameraCommand.view === "detail" ? replay : null;
+  const islandWorld=!cityPreview && cameraCommand.view==="world" && offset!==null;
   const followedOffset = followedReplay ? offset : null;
   const bounded = useMemo(() => new Vector3(), []);
   useEffect(() => {
@@ -169,13 +172,21 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
       const ship=workingBoat(followedOffset,followedReplay.read().seconds);
       controls.target.set(ship.x, cameraSpots.detail[1], ship.z);lastShip.current.set(ship.x,0,ship.z);
       lastYaw.current=ship.yaw;lastWidth.current=1;
-      const offsetView=cameraCommand.view==="sleep"?(wakePreview?new Vector3(5,13,15):new Vector3(-8,20,19)).applyAxisAngle(upAxis,ship.yaw):new Vector3(12,5.3,7);
+      const offsetView=cameraCommand.view==="sleep"?(wakePreview?new Vector3(5,13,15):new Vector3(-3,30,15)).applyAxisAngle(upAxis,ship.yaw):new Vector3(12,5.3,7);
       camera.position.copy(controls.target).add(offsetView);
-      camera.zoom = cameraCommand.view==="sleep"?(wakePreview?Math.min(size.width/24,size.height/16):Math.min(size.width/60,size.height/40)):Math.min(size.width / 25, size.height / 16);
+      camera.zoom = cameraCommand.view==="sleep"?(wakePreview?Math.min(size.width/24,size.height/16):Math.min(size.width/51,size.height/24)):Math.min(size.width / 25, size.height / 16);
     } else if (cameraCommand.view === "harbor") {
       controls.target.fromArray(cameraSpots.harbor);
-      camera.position.copy(controls.target).add(new Vector3(24, 21, 15));
-      camera.zoom = Math.min(size.width / 215, size.height / 158);
+      camera.position.copy(controls.target).add(new Vector3(19, 76, 52));
+      camera.zoom = Math.min(size.width / 233, size.height / 206);
+    } else if(islandWorld){
+      const points=[...coast.map(p=>p.crest),...outerReef.vertices,...destination().reef.polygon,JETTY_HEAD];
+      const xs=points.map(p=>p[0]), zs=points.map(p=>p[1]);
+      const left=Math.min(...xs),right=Math.max(...xs),north=Math.min(...zs),south=Math.max(...zs);
+      controls.target.set((left+right)/2,8,(north+south)/2);
+      camera.position.copy(controls.target).add(new Vector3(0,150,58));
+      camera.zoom=Math.min(size.width/(right-left+72),size.height/(south-north+82));
+      controls.minZoom=Math.min(controls.minZoom,camera.zoom*.8);
     } else {
       controls.target.set(-39, 12, 0);
       camera.position.copy(controls.target).add(new Vector3(94, 115, 112));
@@ -184,7 +195,7 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
     addCameraClearance(camera.position, controls.target);
     camera.updateProjectionMatrix();
     controls.update();
-  }, [camera, gl, cameraCommand, followedOffset, followedReplay, size.width, size.height]);
+  }, [camera, gl, cameraCommand, followedOffset, followedReplay, islandWorld, size.width, size.height]);
   useFrame(() => {
     const controls = controlsRef.current;
     if (!controls) return;
@@ -199,10 +210,12 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
       lastYaw.current=ship.yaw;
       const animal=cameraCommand.view==="sleep"&&!wakePreview&&ship.stage==="REM"?companionState(SYNTHETIC_SESSION,ship.t):null;
       const spread=animal?.fade??0;
-      const shift=(animal?.side??0)*(animal?.across??0)*.42*spread;
-      const encounterWidth=animal?.kind==="dolphin"?.58:animal?.kind==="ray"?.40:animal?.kind==="whale"?1.15:1;
+      const shift=(animal?.side??0)*(animal?.across??0)*(animal?.kind==="whale"?.74:.57)*spread;
+      const encounterWidth=animal?.kind==="ray"?.9:animal?.kind==="whale"?1.05:1;
       const width=1+(encounterWidth-1)*spread;
-      ship.x+=shift*Math.sin(ship.yaw);ship.z+=shift*Math.cos(ship.yaw);
+      const lightLead=cameraCommand.view==="sleep" && !wakePreview && ship.stage==="LIGHT"?4.5:0;
+      ship.x+=shift*Math.sin(ship.yaw)+lightLead*Math.cos(ship.yaw);
+      ship.z+=shift*Math.cos(ship.yaw)-lightLead*Math.sin(ship.yaw);
       if(width!==lastWidth.current){camera.zoom*=lastWidth.current/width;camera.updateProjectionMatrix();lastWidth.current=width;}
       bounded.set(ship.x,0,ship.z).sub(lastShip.current);
       camera.position.add(bounded);target.add(bounded);lastShip.current.set(ship.x,0,ship.z);
@@ -216,7 +229,9 @@ function CameraRig({ cameraCommand,offset,replay,focus }: Pick<SceneProps, "came
         lastIsland.current=level;
       }
     }
-    bounded.set(Math.max(-262, Math.min(cameraCommand.view.startsWith("sleep") || cameraCommand.view === "detail" ? JETTY_HEAD[0]+170 : 190, target.x)), Math.max(0, Math.min(65, target.y)), Math.max(cameraCommand.view==="sleep-island" ? -300 : -120, Math.min(cameraCommand.view.startsWith("sleep") || cameraCommand.view==="detail" ? 190 : 118, target.z)));
+    const seaView=islandWorld || cameraCommand.view.startsWith("sleep") || cameraCommand.view==="detail";
+    bounded.set(Math.max(-262,Math.min(seaView ? JETTY_HEAD[0]+250 : 190,target.x)),
+      Math.max(0,Math.min(65,target.y)),Math.max(seaView ? -400 : -120, Math.min(seaView ? JETTY_HEAD[1]+420 : 118,target.z)));
     camera.position.add(bounded.sub(target));
     target.add(bounded);
     focus.current.copy(target);
@@ -296,7 +311,7 @@ function Boat({ replay, night, onSelect, onReady,offset }: Pick<SceneProps, "off
     if (!group.current) return;
     const seconds=replay.read().seconds;
     const ship=workingBoat(offset,seconds);
-    const pose=boatPose(ship.moored?seconds:ship.t+23*3600);
+    const pose=boatPose(ship.moored?seconds:ship.t+23*3600,ship.moored || ship.stage==="At island");
     const state=cabinState(SYNTHETIC_SESSION,ship.t);
     for(const window of rig.windows){
       window.emissive.setHex(state.closed>.5?0xa21e12:state.bright>0?0xffd27f:0xffc97a);
@@ -320,9 +335,8 @@ function Boat({ replay, night, onSelect, onReady,offset }: Pick<SceneProps, "off
       chain.current.instanceMatrix.needsUpdate=true;
     }
     if(foam.current){foam.current.visible=state.entry>.001;foam.current.scale.setScalar(state.entry);}
-    const hull=anchoredPose(ship,state.swing);
-    group.current.position.set(hull.x,pose.y+port.boatTrim,hull.z);
-    group.current.rotation.set(pose.pitch,hull.yaw,pose.roll);
+    group.current.position.set(ship.x,pose.y+port.boatTrim,ship.z);
+    group.current.rotation.set(pose.pitch,ship.yaw,pose.roll);
     lights.current?.update(camera,night,!ship.moored && ship.stage!=="At island" && !state.anchor,state.anchor>.5);
     if(upper.current)upper.current.color.setHex(state.closed>.5?0xe43c29:0xffce86);
   });
@@ -367,7 +381,8 @@ export default function BoatScene(props: SceneProps) {
   const wakeSource=useMemo(()=>wakePreview?previewWake:voyageWake(props.offset),[props.offset]);
   const motion = useMemo(() => districtMotion(props.day), [props.day]);
   const focus = isTowerView(props.cameraCommand.view) ? props.cameraCommand.view : null;
-  const harborView = ["harbor", "walk", "detail", "berth"].includes(props.cameraCommand.view);
+  const islandWorld=props.cameraCommand.view==="world" && props.offset!==null && !cityPreview;
+  const closeView = ["walk", "detail", "berth"].includes(props.cameraCommand.view);
   const {onBoatReady,onBerthReady,onSkylineReady,onWalkReady,onRoadReady}=props;
   const sliceReady=useCallback(()=>{
     onBoatReady();onSkylineReady();onWalkReady();onRoadReady();
@@ -385,7 +400,7 @@ export default function BoatScene(props: SceneProps) {
     }}>
     <color attach="background" args={[light.air]} />
     <fog attach="fog" args={[light.air,
-      CAMERA_DEPTH_OFFSET + (harborView ? 52 : 195), CAMERA_DEPTH_OFFSET + (harborView ? 135 : 310)]} />
+      CAMERA_DEPTH_OFFSET + (islandWorld ? 290 : closeView ? 52 : 195), CAMERA_DEPTH_OFFSET + (islandWorld ? 525 : closeView ? 135 : 310)]} />
     <hemisphereLight args={[light.sky,light.ground,light.fill]} />
 
     <ReplayDriver replay={props.replay} />
@@ -409,7 +424,6 @@ export default function BoatScene(props: SceneProps) {
 
     <CityGround cameraFocus={cameraFocus} onPlot={props.onPlot} occupiedCount={props.hrv.status==="available"?props.hrv.buildingCount:null} night={night}/>{!focus && <><HarborBlock replay={props.replay} night={night}/><CitySignals replay={props.replay}/></>}
     <group visible={!focus}>
-
       {props.offset!==null && <Suspense fallback={null}><VoyageLife offset={props.offset} replay={props.replay} night={night} onWake={props.onWake}/></Suspense>}
       {props.offset!==null && <><SeaMist/><Suspense fallback={null}><DestinationIsland offset={props.offset} replay={props.replay} onIsland={props.onIsland}/></Suspense></>}
       {!wakePreview && <MooringLines offset={props.offset} replay={props.replay}/>}

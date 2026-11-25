@@ -33,10 +33,12 @@ _Avoid_: Separate sessions created solely because sleep crosses midnight.
 **Sleep island**: An island for one complete sleep session. Land area is proportional to recorded time asleep.
 Naps have separate islands. Awake segments do not add islands or land area.
 
+**Outer reef**: A fixed reef between the harbor and the sleep island. The voyage goes around it. It is not a sleep island.
+
 **Sleep route**: The fixed outbound passage from the working berth to the sleep island jetty head.
 _Avoid_: Return voyage.
 
-**Voyage chart**: A card that shows the chronology of one sleep session as a track on a nautical chart. It shows stage segments, awakenings, and durations.
+**Sleep voyage card**: A card that shows the chronology of one sleep session as a track on a nautical chart. It shows stage segments, awakenings, and durations.
 
 **Sleep journey**: The chronological boat journey during a sleep session. The boat reaches the completed sleep island at the final session end.
 _Avoid_: The return voyage to the city, repeated circuits around an island.

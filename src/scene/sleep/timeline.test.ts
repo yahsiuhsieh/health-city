@@ -49,7 +49,7 @@ describe("sleep route",()=>{
       expect(distance).toBeLessThanOrEqual(.5);
       expect(angle*180/Math.PI).toBeLessThanOrEqual(2);
       if(p.maneuver==="path" && last.maneuver==="path" && distance>.001 && angle>.000001)
-        expect(distance/angle).toBeGreaterThanOrEqual(p.x>185 ? 60 : 30);
+        expect(distance/angle).toBeGreaterThanOrEqual(p.x>171 ? 60 : 30);
       last=p;
       minimum=Math.min(minimum,harborClearance(p,p.maneuver==="lateral").minimum);
     }
@@ -90,34 +90,49 @@ it("samples the stern track at metre intervals and fades after each stop",async(
   expect(wakeStrength(session,31800)).toBe(0);
 });
 
-it("sails a kilometre, approaches on a straight line, then turns offshore into a separate lane",()=>{
-  expect(Math.abs(ROUTE_LENGTH-1000)).toBeLessThanOrEqual(25);
-  const head=routeFrame(ROUTE_LENGTH-1);
+it("clears both reefs, enters the south jetty westbound, and returns on a separate lane",async()=>{
+  const {HARBOR_MOUTH}=await import("../city/harbor-plan.ts");
+  const {outerReef}=await import("./outer-reef.ts");
+  const {islandShape}=await import("./island-shape.ts");
+  const head=routeFrame(ROUTE_LENGTH-1), [mx,mz]=HARBOR_MOUTH.point;
+  const direct=Math.hypot(head.x-mx,head.z-mz);
+  expect(direct).toBeGreaterThanOrEqual(450);expect(direct).toBeLessThanOrEqual(500);
+  expect(Math.abs(ROUTE_LENGTH-900)).toBeLessThanOrEqual(25);
+  expect(ROUTE_LENGTH/direct).toBeLessThanOrEqual(2);
+  const obstacleOnDirect=Array.from({length:501},(_,i)=>outerReef.distance(mx+(head.x-mx)*i/500,mz+(head.z-mz)*i/500));
+  expect(Math.min(...obstacleOnDirect)).toBeLessThan(0);
   for(let s=0;s<=120;s+=.5){
     const p=routeFrame(ROUTE_LENGTH-1-s);
-    expect(p.x).toBeCloseTo(head.x-s,5);
+    expect(p.x).toBeCloseTo(head.x+s,5);
     expect(p.z).toBeCloseTo(head.z,5);
   }
-  const track=Array.from({length:Math.ceil(ROUTE_LENGTH)+1},(_,s)=>routeFrame(s));
-  for(let i=0;i<6000;i++){
-    const p=returnFrame(i/10000);
-    if(p.maneuver==="path" && p.x>=head.x && p.x<=head.x+40 && p.tx>0) expect(p.z).toBeCloseTo(head.z);
-    if(p.x>185 && p.x<head.x && p.tx<0){
-      const j=track.findIndex(q=>q.x>=p.x);
-      expect(p.z).toBeGreaterThan(track[j]!.z-.001);
-      if(p.x>=335) expect(Math.min(...track.map(q=>Math.hypot(p.x-q.x,p.z-q.z)))).toBeGreaterThanOrEqual(80);
+  const seaward=Array.from({length:Math.ceil(ROUTE_LENGTH-S_MOUTH)},(_,i)=>routeFrame(S_MOUTH+i));
+  const returning=Array.from({length:3001},(_,i)=>returnFrame(i/5000)).filter(p=>p.x>mx);
+  const islands=[5,20,60,180,442,720].map(m=>islandShape(session,m));
+  for(const [i,p] of seaward.entries()){
+    expect(outerReef.distance(p.x,p.z)).toBeGreaterThanOrEqual(40);
+    if(S_MOUTH+i<ROUTE_LENGTH-121)for(const island of islands)
+      expect(island.reef.distance(p.x,p.z)).toBeGreaterThanOrEqual(40);
+  }
+  function side(a:typeof head,b:typeof head,c:typeof head){return (b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x);}
+  for(const [i,p] of returning.entries()){
+    expect(outerReef.distance(p.x,p.z)).toBeGreaterThanOrEqual(40);
+    if(!i)continue;
+    const q=returning[i-1]!;
+    for(let k=1;k<seaward.length;k++){
+      const a=seaward[k-1]!,b=seaward[k]!;
+      if(side(a,b,p)*side(a,b,q)<0 && side(p,q,a)*side(p,q,b)<0)throw Error("The offshore lanes intersect.");
     }
   }
 });
 
-it("keeps the fenders and safety margin clear of the wake buoy during swing and return",async()=>{
+it("keeps the fenders and safety margin clear of the wake buoy at anchor and during return",async()=>{
   const {pointClearance}=await import("./clearance.ts");
-  const {anchoredPose,cabinState}=await import("./vessel-state.ts");
   const wake=routeSpans(session).find(s=>s.stage==="AWAKE")!,marker=routeFrame(wake.s0);
   const x=marker.x+6*marker.nx,z=marker.z+6*marker.nz;
   let minimum=Infinity;
   for(let t=wake.start;t<=wake.end;t++){
-    const p=anchoredPose(marker,cabinState(session,t).swing);
+    const p=voyageState(session,t);
     minimum=Math.min(minimum,pointClearance(p,x,z,.51));
   }
   for(let s=wake.s0;s<=ROUTE_LENGTH;s+=.5) minimum=Math.min(minimum,pointClearance(routeFrame(s),x,z,.51));
@@ -132,10 +147,69 @@ it("stops forward motion before the one-metre slide and casts off before advanci
   expect(moored.x).toBeCloseTo(head.x);expect(moored.z).toBeCloseTo(head.z-1);
   const arrival=voyageState(session,end-57),departure=voyageState(session,end+636);
   for(const p of [arrival,afterWait,departure]){
-    expect(p.maneuver).toBe("lateral");expect(p.x).toBeCloseTo(head.x);expect(p.yaw).toBe(0);
+    expect(p.maneuver).toBe("lateral");expect(p.x).toBeCloseTo(head.x);expect(Math.cos(p.yaw)).toBe(-1);
   }
   expect(arrival.z).toBeCloseTo(head.z-.5);expect(departure.z).toBeCloseTo(arrival.z);
   expect(returnFrame(.02).z).toBeCloseTo(head.z);
-  const turn=Array.from({length:180},(_,i)=>returnFrame(i/1000)).find(p=>Math.abs(p.yaw)>.001)!;
-  expect(turn.x-head.x).toBeGreaterThanOrEqual(45);
+  const turn=Array.from({length:180},(_,i)=>returnFrame(i/1000)).find(p=>p.maneuver==="path" && Math.abs(Math.sin(p.yaw))>.001)!;
+  expect(head.x-turn.x).toBeGreaterThan(20);
+});
+
+it("keeps distinct shallow reef crests on a shared shelf with channels of different depths",async()=>{
+  const {outerReef}=await import("./outer-reef.ts");
+  const {outerReefSeabed}=await import("./reef.ts");
+  const bed=outerReefSeabed();
+  try{
+    expect(outerReef.patches).toHaveLength(5);
+    const channelDepths:number[]=[];
+    for(const patch of outerReef.patches){
+      const depth=bed.depthAt(...patch.center);
+      expect(depth).toBeGreaterThan(0);
+      expect(depth).toBeLessThan(3);
+      let gap=Infinity,channelDepth=0;
+      for(const neighbor of outerReef.patches){
+        if(neighbor===patch)continue;
+        for(const a of patch.polygon)for(const b of neighbor.polygon){
+          const distance=Math.hypot(a[0]-b[0],a[1]-b[1]);
+          if(distance>=gap)continue;
+          gap=distance;
+          channelDepth=bed.depthAt((a[0]+b[0])/2,(a[1]+b[1])/2);
+        }
+      }
+      expect(gap).toBeGreaterThan(10);
+      expect(channelDepth).toBeGreaterThan(depth);
+      channelDepths.push(channelDepth);
+    }
+    expect(Math.min(...channelDepths)).toBeLessThan(5);
+    expect(Math.max(...channelDepths)).toBeGreaterThan(8);
+  }finally{bed.texture.dispose();}
+});
+
+it("places the elongated outer reef east of the harbor mouth",async()=>{
+  const {outerReef}=await import("./outer-reef.ts");
+  const {HARBOR_MOUTH}=await import("../city/harbor-plan.ts");
+  const east=outerReef.center[0]-HARBOR_MOUTH.point[0];
+  expect(east).toBeGreaterThanOrEqual(200);expect(east).toBeLessThanOrEqual(280);
+  let length=0,tx=0,tz=0;
+  for(const a of outerReef.vertices)for(const b of outerReef.vertices){
+    const dx=b[0]-a[0],dz=b[1]-a[1],distance=Math.hypot(dx,dz);
+    if(distance>length){length=distance;tx=dx/distance;tz=dz/distance;}
+  }
+  expect(length).toBeGreaterThanOrEqual(220);expect(length).toBeLessThanOrEqual(320);
+  expect(Math.abs(tz)).toBeGreaterThan(Math.abs(tx));
+  const across=outerReef.vertices.map(([x,z])=>-tz*x+tx*z);
+  const width=Math.max(...across)-Math.min(...across);
+  expect(width).toBeGreaterThanOrEqual(50);expect(width).toBeLessThanOrEqual(90);
+});
+
+it("holds the heading at anchor, at the jetty, and at the berth",()=>{
+  const end=elapsedSeconds(session);
+  for(const [start,stop] of [[-600,-1],[14400,14879],[end,end+599],[end+4200,end+4800]] as const){
+    const heading=voyageState(session,start).yaw;
+    for(let t=start;t<=stop;t+=5){
+      const pose=voyageState(session,t);
+      expect(pose.maneuver).toBe("hold");
+      expect(Math.abs(pose.yaw-heading)).toBeLessThan(Math.PI/360);
+    }
+  }
 });

@@ -1,3 +1,4 @@
+import { ambientTime } from "../ocean/ambient-time.ts";
 import { WORK_BOAT_BERTH } from "../city/harbor-plan.ts";
 import { JETTY_SLIDE, ROUTE_LENGTH, S_MOUTH, returnStops, returnFrame, routeFrame } from "./route.ts";
 import { asleepSeconds, elapsedSeconds, type SleepSession, type SleepSegment } from "./session.ts";
@@ -140,14 +141,14 @@ export function wakeStrength(session:SleepSession,t:number){
   }
   if(span.stage==="AWAKE"){
     if(span.s0===0)return 0;
-    return Math.max(0,1-(t-span.start)/600);
+    return Math.max(0,1-ambientTime(t-span.start)/2);
   }
   const remaining=ROUTE_LENGTH-routeDistanceAt(session,t);
   if(remaining<15)return Math.max(0,(remaining-JETTY_SLIDE)/(15-JETTY_SLIDE));
   const previous=routeSpans(session)[span.index-1];
   if(previous?.stage==="AWAKE"){
     const held=previous.end-previous.start;
-    const residual=previous.s0===0?0:Math.max(0,1-held/600);
+    const residual=previous.s0===0?0:Math.max(0,1-ambientTime(held)/2);
     return Math.min(1,residual+(t-span.start)/60);
   }
   return Math.min(1,t/60);

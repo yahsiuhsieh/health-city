@@ -64,6 +64,13 @@ function contour(local:Point[],center:Point,aspect:number){
   }
   return {polygon,center,bounds,distance};
 }
+export function reefPlatform(area:number,aspect:number,seed:number,center:Point){
+  return contour(outline(area,aspect,seed,false),center,aspect);
+}
+// Keep the approved island texture and planting fields fixed relative to the reef.
+export function islandNoisePoint(x:number,z:number):Point{
+  return [1144+x-(JETTY_HEAD[0]-12),-39.6+z-(JETTY_HEAD[1]-13)];
+}
 export function islandShape(session:SleepSession,minutes=asleepSeconds(session)/60){
   if(!Number.isFinite(minutes)||minutes<=0)throw new RangeError("Island area requires positive asleep time.");
   const area=minutes*ISLAND_M2_PER_ASLEEP_MINUTE,platformArea=Math.max(15000,area*2.5);
@@ -71,7 +78,7 @@ export function islandShape(session:SleepSession,minutes=asleepSeconds(session)/
   const reefAspect=1.85,cayAspect=1.7;
   const reefLocal=outline(platformArea,reefAspect,seed,false);
   const top=Math.max(...reefLocal.map(p=>p[1]));
-  const reefCenter:Point=[JETTY_HEAD[0],JETTY_HEAD[1]-16-top];
+  const reefCenter:Point=[JETTY_HEAD[0]-12,JETTY_HEAD[1]-13-top];
   const reef=contour(reefLocal,reefCenter,reefAspect);
   const cayLocal=outline(area,cayAspect,seed+62,true);
   const center:Point=[reefCenter[0]+.32*Math.sqrt(area/Math.PI),reef.bounds.top-26-.10*Math.sqrt(area/Math.PI)-Math.max(...cayLocal.map(p=>p[1]))];
@@ -87,12 +94,14 @@ export function islandShape(session:SleepSession,minutes=asleepSeconds(session)/
   const pier:Point=[JETTY_HEAD[0],JETTY_HEAD[1]-6.15];
   function beachWidth(x:number,z:number){
     const leeward=clamp01((center[0]-x)/(center[0]-cay.bounds.left));
-    return Math.min(4+8*leeward+2*noise(x*.04+seed,z*.04),Math.sqrt(area)*.20);
+    const [u,v]=islandNoisePoint(x,z);
+    return Math.min(4+8*leeward+2*noise(u*.04+seed,v*.04),Math.sqrt(area)*.20);
   }
   function elevation(x:number,z:number){
     const inland=Math.max(0,-cay.distance(x,z)),width=beachWidth(x,z);
-    const berm=1.0+.48*noise(x*.04,z*.04+seed);
-    const interior=(area>15000?2.9:2.0)+1.25*noise(x*.025+seed,z*.025);
+    const [u,v]=islandNoisePoint(x,z);
+    const berm=1.0+.48*noise(u*.04,v*.04+seed);
+    const interior=(area>15000?2.9:2.0)+1.25*noise(u*.025+seed,v*.025);
     return berm*Math.min(1,inland/width)+smooth(clamp01((inland-width)/13))*(interior-berm);
   }
   return {...cay,area,radius:Math.sqrt(area/Math.PI),reef,platformArea,shore,pier,seed,beachWidth,elevation};

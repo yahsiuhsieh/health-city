@@ -92,9 +92,22 @@ function model(name,variant) {
     foliage(10,true);
   }else if(name==="shrub"){
     for(let i=0;i<4;i++)lobe(.45*Math.cos(i*2.4+tilt),.48+.18*((i+variant)%2),.42*Math.sin(i*2.4+tilt),.69,.55,.64,i%2?"#92a656":"#749457",0);
-  }else if(name==="beach-rock" || name==="bommie"){
-    const slab=name==="beach-rock";
-    lobe(0,slab?.05:-.10,0,1,slab?.12:1,slab?.55:.9,slab?"#929182":"#898d70",1);
+  }else if(name==="beach-rock"){
+    lobe(0,.05,0,1,.12,.55,"#929182",1);
+  }else if(name==="bommie"){
+    const rock=new T.IcosahedronGeometry(1,1),pos=rock.attributes.position;
+    for(let i=0;i<pos.count;i++){
+      const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i),a=Math.atan2(z,x);
+      const ledge=.88+.13*Math.cos(3*a+.6)+.08*Math.sin(5*a-1.7*y);
+      pos.setXYZ(i,x*ledge+.12*y,.92*y-.10+.08*Math.sin(4*x+3*z),z*ledge*.86);
+    }
+    rock.computeVertexNormals();add(rock,"#7b8267");
+    const rgb=rock.attributes.color;
+    for(let i=0;i<pos.count;i++){
+      const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+      const shade=.7+.19*y+.12*Math.sin(7*x+4*z)+.09*Math.cos(9*z-3*y);
+      rgb.setXYZ(i,rgb.getX(i)*shade,rgb.getY(i)*shade,rgb.getZ(i)*shade);
+    }
   }else if(name==="driftwood"){
     limb([-1.4,.10,.13],[1.3,.16,-.1],.1,.065,"#a2987e");
     limb([.4,.14,0],[.85,.29,.34],.06,.018,"#938c78");

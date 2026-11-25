@@ -25,7 +25,8 @@ const vertexShader = /* glsl */`
 const fragmentShader = /* glsl */`
   #include <common>
   #include <packing>
-  uniform sampler2D islandMap;
+  uniform sampler2D islandMap,outerMap;
+  uniform vec4 outerBounds;
   uniform vec4 islandBounds;
   uniform sampler2D sceneColor;
   uniform sampler2D sceneDepth;
@@ -43,13 +44,16 @@ const fragmentShader = /* glsl */`
   ${shoreGLSL}
 
   float flecks(vec2 p) {
-    vec2 drift = p - vec2(.78,.63)*.08*oceanTime;
-    vec2 warp = noiseSamples(drift*.19).ra-.5;
-    vec2 q = (drift + 3.*warp) / 2.8;
-    float n = .63*oceanNoise(q)+.26*oceanNoise(q*2.13+11.)+.11*oceanNoise(q*4.27);
-    float life = sin(6.2831853*oceanTime/8.+6.*oceanNoise(drift*.33));
-    float fleck = smoothstep(.78,.86,n + .05*life + .13*(oceanNoise(drift*.061)-.5));
-    return fleck > 0. ? fleck*(.16+.52*lace(drift)) : 0.;
+    vec2 drift=p-vec2(.78,.63)*.08*oceanTime;
+    vec2 cell=floor(drift/2.6);
+    vec4 seed=noiseSamples(cell);
+    vec2 local=(fract(drift/2.6)-.5)*2.6+(seed.gb-.5)*1.1;
+    float radius=mix(.15,.6,seed.r);
+    local.y+=local.x*(seed.b-.5)*1.4;
+    float edge=length(local*vec2(1.,2.2))/radius;
+    float life=smoothstep(.24,.82,.5+.5*sin(oceanTime*.77+seed.a*28.));
+    return (1.-smoothstep(.12,1.,edge))*life*smoothstep(.56,.84,seed.g)*(.18+.5*lace(drift));
+
   }
   varying vec3 worldPoint;
   varying float surfaceZ;
@@ -80,8 +84,15 @@ const fragmentShader = /* glsl */`
     vec4 bank = vec4(1.,1.,0.,0.);
     if (all(greaterThanEqual(p,bedBounds.xy)) && all(lessThan(p,bedBounds.xy+bedBounds.zw)))
       bank = texture2D(bedMap,(p-bedBounds.xy)/bedBounds.zw);
-    else if (all(greaterThanEqual(p,islandBounds.xy)) && all(lessThan(p,islandBounds.xy+islandBounds.zw)))
-      bank = texture2D(islandMap,(p-islandBounds.xy)/islandBounds.zw);
+    bool fixedReef=false;
+    if(all(greaterThanEqual(p,outerBounds.xy)) && all(lessThan(p,outerBounds.xy+outerBounds.zw))){
+      vec4 reef=texture2D(outerMap,(p-outerBounds.xy)/outerBounds.zw);
+      if(reef.r<bank.r){bank=reef;fixedReef=true;}
+    }
+    if(uIslandReveal>0. && all(greaterThanEqual(p,islandBounds.xy)) && all(lessThan(p,islandBounds.xy+islandBounds.zw))){
+      vec4 island=texture2D(islandMap,(p-islandBounds.xy)/islandBounds.zw);
+      if(island.r<bank.r){bank=island;fixedReef=false;}
+    }
     if(bank.b>.97) depth=max(depth,40.*bank.r*smoothstep(2.5,9.,40.*bank.r));
     float cover=bank.b<=0.?1.:bank.b>.97?uIslandReveal:smoothstep(bank.b-.045,bank.b+.008,reveal);
     vec3 water=deepColor;
@@ -93,11 +104,13 @@ const fragmentShader = /* glsl */`
       vec3 transmittance=exp(-depth*vec3(${absorptionRates.join(",")}));
       water=mix(deepColor,refracted,transmittance*bedVisibility);
       float tint=smoothstep(.3,1.2,depth)*(1.-smoothstep(2.5,6.,depth));
-      water=mix(water,shallowTint,tint*.35*(1.-.5*nightAmount));
+      // A shallow animal in offshore water does not acquire the sand shelf tint.
+      float shelf=1.-smoothstep(8.,12.,40.*bank.r);
+      water=mix(water,mix(deepColor,shallowTint,shelf),tint*mix(.16,.35,shelf)*(1.-.5*nightAmount));
     }
-    float basin = (1.-smoothstep(24.,33.,p.x)) * smoothstep(-20.,-8.,p.x)
-      * (1.-smoothstep(70.,82.,abs(p.y+1.)));
-    water = mix(water,harborTint,.25*basin*smoothstep(2.,6.,depth));
+    float basin = clamp(-bank.b,0.,1.);
+    vec3 portWater=mix(deepColor,harborTint,.32*(1.-.5*nightAmount));
+    water=mix(water,portWater,basin*smoothstep(1.6,2.5,depth));
     water=mix(deepColor,water,cover);
     depth=mix(40.,depth,cover);
     float broad = oceanNoise((p+vec2(.02,0)*oceanTime)/40.) + oceanNoise((p-vec2(0,.02)*oceanTime)/90.)-1.;
@@ -108,7 +121,7 @@ const fragmentShader = /* glsl */`
     float sun = max(dot(reflect(-viewDirection,normal),normalize(vec3(.57,1.,.52))),0.);
     water += vec3(1.,.93,.78)*(.04*pow(sun,60.)*fineRipple.r*(1.-.9*nightAmount));
     if (depth>3.) {
-      float fleckAlpha=flecks(p)*smoothstep(3.,5.,depth)*mix(.45,.25,nightAmount);
+      float fleckAlpha=flecks(p)*smoothstep(3.,5.,depth)*mix(.225,.125,nightAmount);
       water=mix(water,fleckColor,fleckAlpha);
     }
     float distance = bank.g*24.;
@@ -118,12 +131,12 @@ const fragmentShader = /* glsl */`
       float contact = (1.-smoothstep(.05,.15,abs(distance)))*.25;
       float rockFoam = .4 * (1.-smoothstep(.04,.3,abs(distance)))*lace(p);
       float foam = bank.a > 1.5 ? rockFoam : mix(soft,contact,min(bank.a,1.));
-      water = mix(water,foamColor,foam);
+      water = mix(water,foamColor,foam*(bank.b>.97?uIslandReveal:1.));
     }
-    if(bank.b>.97 && bank.a>.01){
+    if((bank.b>.97 || fixedReef) && bank.a>.01){
       vec2 crestWash=shoreWash(p,(1.-bank.a/3.)*1.6,oceanTime);
       float surf=bank.a/3.*(.18+.82*crestWash.x)*(.2+.8*lace(p));
-      water=mix(water,foamColor,surf*uIslandReveal);
+      water=mix(water,foamColor,surf*(fixedReef?1.:uIslandReveal));
     }
     float farDepth = -surfaceZ - ${CAMERA_DEPTH_OFFSET.toFixed(1)};
     float softBeach = (1.-smoothstep(0.,1.,bank.a))*(bank.b>.97?uIslandReveal:step(bank.b,reveal));
@@ -188,11 +201,13 @@ export function WaterSurface({ night, dryLand }: { night: boolean; dryLand: RefO
         activeCamera.layers.disable(TRANSPARENT_LAYER);
         activeCamera.layers.disable(DRY_LAYER);
         activeCamera.layers.enable(SEABED_LAYER);
+        ocean.waterPass.value=1;
         renderer.shadowMap.autoUpdate = false;
         renderer.xr.enabled = false;
         renderer.setRenderTarget(oceanTarget);
         renderer.render(scene, activeCamera);
       } finally {
+        ocean.waterPass.value=0;
         renderer.setRenderTarget(target);
         activeCamera.layers.mask = mask;
         renderer.shadowMap.autoUpdate = shadows;

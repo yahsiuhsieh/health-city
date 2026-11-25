@@ -1,4 +1,5 @@
-import { OUTER_MOUTH } from "../city/harbor-plan.ts";
+import { ambientTime } from "./ambient-time.ts";
+import { HARBOR_MOUTH } from "../city/harbor-plan.ts";
 import { sessionSeconds, voyage } from "../sleep-voyage.ts";
 
 import { wakePath,wakeStrength } from "../sleep/timeline.ts";
@@ -9,6 +10,7 @@ export interface WakeSample {
   points: WakePoint[];
   strength: number;
   beam: number;
+  stopped: boolean;
   stage?: string;
   yaw?: number;
 }
@@ -16,12 +18,12 @@ export interface WakeSource { sample(replaySeconds: number): WakeSample }
 export const TRAIL_LENGTH = 55;
 const sternOffset = 9.94;
 const beam = 5.6;
-const fade = (seconds: number) => Math.max(0, 1-seconds/600);
+const fade = (seconds: number) => Math.max(0, 1-ambientTime(seconds)/2);
 
 export function voyageWake(offset: number | null): WakeSource {
   return {sample(seconds){
     const ship=voyage(offset,seconds),strength=wakeStrength(SYNTHETIC_SESSION,ship.t);
-    return {points:strength?wakePath(SYNTHETIC_SESSION,ship.t):[],strength,beam,stage:ship.stage,yaw:ship.yaw};
+    return {points:strength?wakePath(SYNTHETIC_SESSION,ship.t):[],strength,beam,stopped:ship.stage==="AWAKE",stage:ship.stage,yaw:ship.yaw};
   }};
 }
 
@@ -29,8 +31,8 @@ const straight = 60, turnRadius = 12, arc = Math.PI*turnRadius;
 export const previewLap = 2*(straight+arc);
 export const previewStop = 4800;
 function previewStern(distance: number) {
-  // Keep the isolated wake study seaward of the outer breakwaters.
-  const startX=OUTER_MOUTH.point[0]+40,endX=startX+straight;
+  // Keep the isolated wake study seaward of the harbor entrance.
+  const startX=HARBOR_MOUTH.point[0]+40,endX=startX+straight;
   const d = ((distance%previewLap)+previewLap)%previewLap;
   if (d<straight) return {x:startX+d,z:24,yaw:0};
   if (d<straight+arc) {
@@ -56,7 +58,7 @@ export const previewWake: WakeSource = {sample(seconds) {
     const {x,z}=previewStern(distance-behind);
     points.push({x,z,behind});
   }
-  return {points,strength,beam,yaw:previewStern(distance).yaw};
+  return {points,strength,beam,stopped:seconds%(previewStop+1200)>=previewStop,yaw:previewStern(distance).yaw};
 }};
 
 export function boatPathSamples(includeVoyage: boolean, includePreview: boolean) {

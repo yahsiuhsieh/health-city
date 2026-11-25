@@ -2,6 +2,8 @@
 
 **Delivery complete.** The user approved the final voyage chart artwork on November 23, 2026. [Final acceptance and verification](../../design/visual-studies/sleep-voyage-v3/checkpoint-c/README.md#final-acceptance)
 
+The user approved the subsequent harbor, wildlife, and card revisions through Checkpoint F on November 24, 2026. [Review 1 delivery record](sleep-voyage-v3-review-1.md)
+
 This plan replaces [sleep-island-redesign.md](sleep-island-redesign.md) and the sleep parts of checkpoint B. It also changes the working-boat parts of [city-redesign.md](city-redesign.md). When this plan disagrees with an older plan, this plan controls.
 
 The [product specification](../product-spec.md) still controls data behavior. Phase 0 of this plan changes several sleep rules in that specification. The user approved these changes on November 23, 2026. Section 3 lists them.
@@ -572,28 +574,15 @@ Add `src/scene/sleep/captain.ts`. Build a walk graph from the sockets in section
 - The captain state is a pure function of `t` and `a`. Seeking restores it.
 - Replace the `captain: "inside" | "bow" | "wing"` enum in `vessel-state.ts` with the station model.
 
-## 14. Voyage chart
+## 14. Sleep voyage card
 
 ### 14.1 Content
 
-Add `src/frontend/VoyageChart.tsx`. Show it as a card. It replaces the stage inspection ribbon and the route overview camera.
-
-- A stylized nautical chart: the city harbor on the left, the island on the right, depth contours, and a compass rose.
-- The route track. Color each stage segment. Use these colors, which pass the dataviz palette check: LIGHT `#5aa9e6`, DEEP `#1f3d7a`, REM `#9b6bd3`, ASLEEP `#9aa3ad`. Add a dashed pattern for ASLEEP. The pattern keeps the stages distinct without color.
-- An anchor symbol at each awakening. Show its time and duration.
-- Hour ticks along the track.
-- A boat marker at the current replay position.
-- A summary: start, end, elapsed time, asleep time, and island area.
-- The stage proportions: minutes and percentage of asleep time for LIGHT, DEEP, REM, and unclassified sleep. Show them as a stacked bar and as a table. The synthetic session gives LIGHT 202 min (45.7%), DEEP 150 min (33.9%), and REM 90 min (20.4%).
-- The track length of each stage segment is proportional to its duration, because route distance is proportional to asleep time. Awakenings have zero track length. Show them as anchor symbols.
+The card shows time asleep, stage durations, a four-row timeline, the route, and session details. The light card uses amber for Awake, teal for REM, blue for Light, and violet for Deep. Grey hatching marks unclassified sleep. Direct labels and a screen-reader table identify the stages. The synthetic session contains 202 minutes of Light, 150 minutes of Deep, and 90 minutes of REM.
 
 ### 14.2 Behavior
 
-- The track shows only the part before the current replay time. This is the progressive reveal.
-- Clicking a segment shows its stage, start, end, and duration.
-- Open the chart from the sleep panel, by clicking the boat, or by clicking the island.
-- The card works at phone width.
-- Pause and seek update it.
+The card counts only the elapsed part of each stage. The timeline hides future stages. Selecting an interval marks its place on the route. Both views follow replay across midnight. The card scrolls within the scene on desktop and opens as a bottom sheet on phones. [Review 1 card requirements](sleep-voyage-v3-review-1.md#5-sleep-voyage-card)
 
 ## 15. Cameras
 
@@ -676,7 +665,7 @@ Report and stop at each checkpoint. Do not continue until the user approves.
 
 ## 18. Real size ranges
 
-Use these sizes. Tests check the assets against them.
+Review 1 sets the rendered wildlife sizes below. Tests check these dimensions in the exported assets.
 
 | Object | Size |
 | --- | --- |
@@ -686,14 +675,13 @@ Use these sizes. Tests check the assets against them.
 | Broadleaf beach tree | 8–12 m tall, canopy 6–12 m wide |
 | Beach shrub | 0.8–1.5 m tall |
 | Coral colony | 0.4–3.0 m wide |
-| Brown booby | 1.4 m wingspan |
-| Tern | 0.8 m wingspan |
-| Flying fish | 0.45 m rendered (0.3 m real) |
-| Manta ray | 4.5 m wingspan |
-| Whale shark | 9 m long |
-| Dolphin | 2.4 m long |
-| Humpback whale | 13 m long |
-| School fish | 0.25–0.4 m long |
+| Brown booby | 2.8 m wingspan |
+| Tern | 1.8 m wingspan |
+| Flying fish | 0.12 m long and 1.0 m across the fins |
+| Manta ray | 8.0 m wingspan |
+| Whale shark | 12 m long |
+| Dolphin | 4.0 m long |
+| Humpback whale | 16 m long |
 | Jetty T-head | 14 m × 3 m |
 
 ## 19. Screenshots and references

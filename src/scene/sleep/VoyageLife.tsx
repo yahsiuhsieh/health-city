@@ -14,11 +14,13 @@ import { useOcean } from "../ocean/OceanEnvironment.tsx";
 export function VoyageLife({offset,replay,night,onWake}:{offset:number;replay:Replay;night:boolean;onWake:()=>void}){
   const [world,life]=useLoader(GLTFLoader,["/models/sleep-world.glb","/models/sea-life.glb"]);
   const buoy=useMemo(()=>{const obj=world!.scene.getObjectByName("wake-buoy")!.clone(true);
+    obj.scale.y=1.35;
     const lens=obj.getObjectByName("wake-buoy-lens") as Mesh;lens.material=(lens.material as MeshStandardMaterial).clone();
     lens.layers.set(DRY_LAYER);obj.getObjectByName("wake-buoy-topmark")!.layers.set(DRY_LAYER);
     const lamp=lens.material as MeshStandardMaterial;lamp.emissive.set("#ffc46b");return {obj,lamp};},[world]);
   useEffect(()=>()=>buoy.lamp.dispose(),[buoy]);
-  const wildlife=useMemo(()=>wildlifeRig(life!.scene),[life]),ocean=useOcean();
+  const ocean=useOcean();
+  const wildlife=useMemo(()=>wildlifeRig(life!.scene,ocean.waterPass),[life,ocean]);
   useEffect(()=>()=>wildlife.dispose(),[wildlife]);
   const wake=routeSpans(session).find(s=>s.stage==="AWAKE")!,marker=routeFrame(wake.s0);
   useFrame(()=>{

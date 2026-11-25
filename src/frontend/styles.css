@@ -103,3 +103,5 @@ select { padding: 7px 9px; border: 1px solid #b7cac4; border-radius: 6px; backgr
   .speed-control { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+
+.world .voyage-scene-heading {padding:7px 12px;border-radius:9px;color:#f7fcf9;background:rgb(19 43 48 / 88%)}

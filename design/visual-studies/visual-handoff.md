@@ -248,3 +248,11 @@ Give LIGHT frequent seabird dives and flying fish. Give the captain room to walk
 The user approved the v3 working harbor, coral cay, stage wildlife, and captain. The user approved the final voyage chart artwork on November 23, 2026. This completed the visual review for Sleep Voyage v3. The final voyage chart uses the outbound course, local breakwaters, cay, and reef outlines. Its colored track grows with replay time. The anchor holds the boat marker at the same track distance during an awakening. The boat marker follows the return lane after departure from the island.
 
 The desktop card places the map beside the stage table. On a phone, the table follows the map. The 3D voyage, island, harbor, quay, and world views remain available. The chart replaces the route overview camera. [Desktop and phone chart captures, shadow comparisons, and final measurements](sleep-voyage-v3/checkpoint-c/README.md#voyage-chart)
+
+## Sleep voyage v3 · Review 1
+
+Checkpoint D replaces the two harbors with one shared basin. The outbound passage runs north of five submerged patches that form the fixed outer reef. The sand shelf remains visible between some crests. A deeper channel cuts across the middle. The boat rounds the island and approaches the south jetty heading west. It passes south of the outer reef on its return. The world view includes both reefs on voyage dates. [Checkpoint D captures and clearance measurements](sleep-voyage-v3/checkpoint-d/README.md)
+
+The user approved Checkpoint D on November 24, 2026. Checkpoint E adds seven wildlife silhouettes at the approved readability scale. Submerged skin appears through water refraction. Exposed fins, flukes, and breaches cross the same waterline. [Checkpoint E gallery and motion recordings](sleep-voyage-v3/checkpoint-e/README.md)
+
+The user approved Checkpoints E and F on November 24, 2026. The accepted card, wake, reef, and mist complete Review 1. The boat follows the unmarked north passage. The awakening buoy opens the sleep record. [Checkpoint F acceptance, captures, and measurements](sleep-voyage-v3/checkpoint-f/README.md)

@@ -1,4 +1,4 @@
-import { noise,type IslandTerrain } from "./island-shape.ts";
+import { noise,islandNoisePoint,type IslandTerrain } from "./island-shape.ts";
 import { seededRandom } from "./random.ts";
 import { reefProfile } from "./reef.ts";
 
@@ -14,8 +14,9 @@ export function islandLayout(land:IslandTerrain){
   const trees:{x:number;z:number}[]=[];
   for(let i=0;i<land.area*.20 && land.area>480;i++){
     const x=left+rand()*(right-left),z=bottom+rand()*(top-bottom),inland=-land.distance(x,z);
-    const spitEnd=left+(right-left)*(.19+.035*noise(z*.065,land.seed));
-    const spacing=2.2+5.8*noise(x*.09+land.seed,z*.09);
+    const [u,v]=islandNoisePoint(x,z);
+    const spitEnd=left+(right-left)*(.19+.035*noise(v*.065,land.seed));
+    const spacing=2.2+5.8*noise(u*.09+land.seed,v*.09);
     if(x<spitEnd || inland<land.beachWidth(x,z)+4.5 || trees.some(p=>Math.hypot(p.x-x,p.z-z)<spacing))continue;
     const size=.91+rand()*.21;
     add("broadleaf-"+variant(3),x,land.elevation(x,z),z,[size,size,size]);trees.push({x,z});
@@ -37,7 +38,7 @@ export function islandLayout(land:IslandTerrain){
   }
   for(let i=0;i<land.area*.18;i++){
     const x=left+rand()*(right-left),z=bottom+rand()*(top-bottom);
-    const inland=-land.distance(x,z),width=land.beachWidth(x,z),patch=noise(x*.16,z*.16+land.seed);
+    const inland=-land.distance(x,z),width=land.beachWidth(x,z),[u,v]=islandNoisePoint(x,z),patch=noise(u*.16,v*.16+land.seed);
     if(inland<width-1.2 || inland>width+2 || patch<.32 || land.area<=120)continue;
     const size=.75+.45*rand();
     add(rand()<.7?"shrub-"+variant(2):"grass-a",x,land.elevation(x,z),z,[size,size,size]);
@@ -73,7 +74,8 @@ export function islandLayout(land:IslandTerrain){
       const local=reefProfile(land,cx,cz);
       if(local.zone==="toe" || local.zone==="sea" || local.shore<6)continue;
       const width=.4+(rand()**2)*(local.zone==="crest"?1.05:2.6),sy=Math.min(width,.64*local.depth);
-      const y=Math.min(-.11-sy*.83,Math.max(-local.depth-.03,base+visible*(1-u*u)*.92));
+      const surface=base+visible-h*(1-Math.sqrt(1-u*u));
+      const y=Math.min(-.11-sy*.83,Math.max(-local.depth-.03,surface));
       const kind=(local.zone==="crest" && rand()<.66)?"coral-plate":colonies[Math.floor(rand()*colonies.length)]!;
       add(kind+"-a",cx,y,cz,[width,sy,width],rand()*6.28,true);sites.push({x:cx,z:cz});
     }

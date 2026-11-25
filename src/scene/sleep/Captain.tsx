@@ -39,7 +39,9 @@ export function Captain({offset,replay}:{offset:number|null;replay:Replay}){
     if(action==="walk" && state.to==="ladder-lip")root.rotation.y=Math.PI/2;
     if(state.ashore){
       ship.updateWorldMatrix(true,false);
-      fixed.fromArray(state.position);fixed.x+=ship.position.x;fixed.z+=ship.position.z;
+      fixed.fromArray(state.position);
+      if(state.from.startsWith("jetty-")||state.to.startsWith("jetty-")){fixed.x=-fixed.x;fixed.z=-fixed.z;}
+      fixed.x+=ship.position.x;fixed.z+=ship.position.z;
       root.position.lerp(ship.worldToLocal(fixed),state.ashore);
       root.rotation.x=-ship.rotation.x*state.ashore;root.rotation.z=-ship.rotation.z*state.ashore;
     }

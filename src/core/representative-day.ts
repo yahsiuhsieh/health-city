@@ -100,11 +100,11 @@ export function trafficAt(day: ReplayDay, seconds: number) {
 
 // These poses are art-review motion, not a sleep route or a health-data mapping.
 // Absolute replay time makes seeking reversible without replaying earlier frames.
-export function boatPose(seconds: number) {
+export function boatPose(seconds: number, moored = false) {
   const phase = seconds * Math.PI * 2 / 900;
   return {
     y: Math.sin(phase) * 0.055,
-    roll: Math.sin(phase + 0.4) * 0.012,
+    roll: Math.sin(phase + 0.4) * 0.012 * (moored ? .5 : 1),
     pitch: Math.cos(phase * 0.7) * 0.006,
   };
 }

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Replay } from "../../core/replay.ts";
 import { revealDistanceAt, islandRevealAt } from "../sleep/timeline.ts";
-import { islandSeabed } from "../sleep/reef.ts";
+import { islandSeabed,outerReefSeabed } from "../sleep/reef.ts";
 import { destination } from "../sleep/island-preview.ts";
 import { ROUTE_LENGTH } from "../sleep/route.ts";
 import { SYNTHETIC_SESSION } from "../sleep/session.ts";
@@ -19,11 +19,15 @@ function makeOcean(hasIsland: boolean, coastline?: SeabedOptions["coastline"]) {
   const island=hasIsland?destination():undefined;
   const bed = buildSeabed({coastline, features: coastline ? [] : shelfMounds()});
   const islandBed = island ? islandSeabed(island) : null;
+  const outerBed=coastline ? null : outerReefSeabed();
   function floorAt(x:number,z:number) {
-    const local = islandBed?.contains(x,z) ? islandBed : bed;
-    return local.sampleAt(x,z,1)<0 ? 0 : local.depthAt(x,z);
+    let depth=bed.sampleAt(x,z,1)<0?0:bed.depthAt(x,z);
+    if(outerBed?.contains(x,z))depth=Math.min(depth,outerBed.depthAt(x,z));
+    if(islandBed?.contains(x,z))depth=Math.min(depth,islandBed.sampleAt(x,z,1)<0?0:islandBed.depthAt(x,z));
+    return depth;
   }
-  return { bed, islandBed, floorAt, uniforms: {
+  return { bed, islandBed, outerBed, floorAt, waterPass:{value:0}, uniforms: {
+    outerMap:{value:outerBed?.texture??bed.texture},outerBounds:{value:outerBed?.bounds??new Vector4()},
     islandMap:{value:islandBed?.texture??bed.texture}, islandBounds:{value:islandBed?.bounds??new Vector4(0,0,0,0)},
     uRevealS:{value:-1}, uIslandReveal:{value:0},
     waterNoise: {value: waterNoiseTexture()}, causticEdge: {value: causticEdgeTexture()},
@@ -43,6 +47,7 @@ export function OceanProvider({ replay, night, offset, children, coastline }: {
   useEffect(() => () => {
     ocean.bed.texture.dispose();
     ocean.islandBed?.texture.dispose();
+    ocean.outerBed?.texture.dispose();
     ocean.uniforms.waterNoise.value.dispose();
     ocean.uniforms.causticEdge.value.dispose();
   }, [ocean]);

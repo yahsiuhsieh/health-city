@@ -1,3 +1,4 @@
+import { mistBank } from "./mist-bank.ts";
 import {expect,it} from "vitest";
 import { islandShape,polygonArea } from "./island-shape.ts";
 import { islandLayout,colonies } from "./island-layout.ts";
@@ -114,4 +115,16 @@ it("clusters natural objects without regular spacing and keeps the crest covered
   expect(mounds.some(p=>reefProfile(land,p.x,p.z).zone==="lagoon" && Math.abs(p.x-land.pier[0])<18)).toBe(true);
   const covered=land.reef.polygon.filter(([x,z])=>mounds.some(m=>Math.hypot(x-m.x,z-m.z)<m.scale[0]+1.5));
   expect(covered.length/land.reef.polygon.length).toBeGreaterThanOrEqual(.8);
+});
+
+it("covers each reef outline and its 30 m margin before the mist clears",()=>{
+  for(const size of sizes){
+    const land=islandShape(session,size),bank=mistBank(land);
+    expect(bank.center).toEqual(land.reef.center);
+    for(const [i,a] of land.reef.polygon.entries()){
+      const b=land.reef.polygon[(i+1)%land.reef.polygon.length]!;
+      const dx=b[0]-a[0],dz=b[1]-a[1],len=Math.hypot(dx,dz);
+      for(const d of [0,15,30])expect(bank.density((a[0]+b[0])/2+d*dz/len,(a[1]+b[1])/2-d*dx/len)).toBeCloseTo(1,4);
+    }
+  }
 });

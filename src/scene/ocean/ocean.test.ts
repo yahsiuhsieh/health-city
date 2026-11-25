@@ -64,11 +64,11 @@ describe("boat wake",()=>{
     expect(previewWake.sample(2130)).toEqual(sample);
   });
   it("fades at a stop and leaves moored water clear",()=>{
-    expect(previewWake.sample(previewStop+300).strength).toBe(.5);
-    expect(previewWake.sample(previewStop+600).strength).toBe(0);
+    expect(previewWake.sample(previewStop+190).strength).toBe(.5);
+    expect(previewWake.sample(previewStop+380).strength).toBe(0);
     expect(voyageWake(null).sample(43200).strength).toBe(0);
     expect(voyageWake(0).sample(sessionSeconds+9000).strength).toBe(0);
-    expect(voyageWake(0).sample(wake.start+300).strength).toBe(.5);
+    expect(voyageWake(0).sample(wake.start+190).strength).toBe(.5);
     const active=voyageWake(0).sample(8640);
     expect(active.strength).toBe(1);expect(active.points.length).toBeGreaterThan(1);
   });
@@ -94,19 +94,15 @@ it("repeats seeded splash events and excludes shallow water and boat paths",()=>
 });
 
 it("samples 40 m of open water between the independent city and island shelves",async()=>{
-  const {JETTY_HEAD,routeFrame}=await import("../sleep/route.ts");
-  const [x,z]=JETTY_HEAD;
-  const city=buildSeabed(),island=buildSeabed({coastline:[],extraLand:[{
-    polygon:[[x,z-10],[x+20,z-10],[x+20,z-30],[x,z-30]],shoreWidth:7,revealKey:1
-  }]});
+  const {ROUTE_LENGTH,S_MOUTH,routeFrame}=await import("../sleep/route.ts");
+  const {islandSeabed,outerReefSeabed}=await import("../sleep/reef.ts");
+  const {islandShape}=await import("../sleep/island-shape.ts");
+  const {SYNTHETIC_SESSION}=await import("../sleep/session.ts");
+  const beds=[buildSeabed(),outerReefSeabed(),islandSeabed(islandShape(SYNTHETIC_SESSION))];
   try{
-    expect(city.bounds.x+city.bounds.z).toBeLessThan(island.bounds.x);
-    for(let s=200;s<=850;s+=5){
+    for(let s=S_MOUTH+100;s<ROUTE_LENGTH-121;s+=2){
       const p=routeFrame(s);
-      for(const bed of [city,island]){
-        expect(bed.contains(p.x,p.z)).toBe(false);
-        expect(bed.depthAt(p.x,p.z)).toBe(40);
-      }
+      for(const bed of beds)expect(bed.depthAt(p.x,p.z)).toBeCloseTo(40,1);
     }
-  }finally{city.texture.dispose();island.texture.dispose();}
+  }finally{for(const bed of beds)bed.texture.dispose();}
 });

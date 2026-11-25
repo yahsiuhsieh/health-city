@@ -1,15 +1,17 @@
-import { useEffect, useMemo } from "react";
-import { BufferGeometry, Color, Float32BufferAttribute, MeshStandardMaterial } from "three";
+import { useEffect, useMemo, useRef } from "react";
+import { BufferGeometry, Color, Float32BufferAttribute, Group, MeshStandardMaterial } from "three";
+import { useFrame } from "@react-three/fiber";
 import { useOcean } from "./OceanEnvironment.tsx";
 import { SEABED_LAYER, WATER_LEVEL } from "./layers.ts";
 import { patchSand } from "./sand-material.ts";
 import type { SeabedData } from "./seabed.ts";
 
-export function seabedGeometry(bed: SeabedData) {
+export function seabedGeometry(bed: SeabedData, patchReef=false) {
   const positions: number[] = [], colors: number[] = [], indices: number[] = [];
   const vertices = new Map<number,number>();
   const sand = new Color("#e6d6a8"), silt = new Color("#6f8f86");
   const rock = new Color("#3f6b5a"), rockTop = new Color("#5a8a6e"), tint = new Color();
+  const coralHead = new Color("#47574b");
   const { x:left,y:bottom,z:width,w:height } = bed.bounds;
   function vertex(x: number,z: number) {
     const key = Math.round((z-bottom)*2)*(Math.ceil(width)*2+3)+Math.round((x-left)*2);
@@ -21,6 +23,7 @@ export function seabedGeometry(bed: SeabedData) {
     tint.copy(sand).lerp(silt, Math.min(1,Math.max(0,(depth-3)/3)));
     if(bed.sampleAt(x,z,3)>1.5)tint.lerp(rock,.7);
     tint.lerp(rock,mound).lerp(rockTop,mound**4);
+    if(patchReef)tint.lerp(coralHead,mound*mound);
     if(bed.sampleAt(x,z,2)>0)tint.multiplyScalar(1-.46*mound);
     tint.multiplyScalar(1 + .05*Math.sin(z*2*Math.PI/.6 + 1.2*Math.sin(x*.74)));
     colors.push(tint.r,tint.g,tint.b);
@@ -76,13 +79,20 @@ export function seabedGeometry(bed: SeabedData) {
 
 export function Seabed() {
   const ocean = useOcean();
-  return <><Floor data={ocean.bed}/>{ocean.islandBed && <Floor data={ocean.islandBed}/>}</>;
+  return <><Floor data={ocean.bed}/>{ocean.outerBed && <Floor data={ocean.outerBed}/>}{ocean.islandBed && <DestinationFloor data={ocean.islandBed}/>}</>;
+}
+
+function DestinationFloor({data}:{data:SeabedData}) {
+  const {uniforms}=useOcean();
+  const group=useRef<Group>(null);
+  useFrame(()=>{if(group.current)group.current.visible=uniforms.uIslandReveal.value>0;});
+  return <group name="Destination seabed" ref={group} visible={false}><Floor data={data}/></group>;
 }
 
 function Floor({data}:{data:SeabedData}) {
   const ocean = useOcean();
   const surfaces=useMemo(()=>{
-    const bed=seabedGeometry(data),material=new MeshStandardMaterial({vertexColors:true,roughness:.95});
+    const bed=seabedGeometry(data,data===ocean.outerBed),material=new MeshStandardMaterial({vertexColors:true,roughness:.95});
     material.onBeforeCompile=shader=>patchSand(shader,ocean,"seabed",data);
     const below:number[]=[],exposed:number[]=[],pos=bed.getAttribute("position"),index=bed.index!;
     for(let i=0;i<index.count;i+=3){

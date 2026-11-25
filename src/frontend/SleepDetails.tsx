@@ -13,6 +13,6 @@ export function SleepDetails({kind,close,depart,openChart}:{kind:"wake"|"sleep";
     <p>{sleepStamp(span?.start??0)} – {sleepStamp(span?.end??elapsedSeconds(session))} · Chicago</p>
     {span?<p>{(span.end-span.start)/60} min awake</p>:<p>{elapsedSeconds(session)/60} min elapsed · {asleepSeconds(session)/60} min asleep</p>}
     <p>Synthetic sleep session</p>
-    <button onClick={openChart}>Open voyage chart</button> {!span&&<button onClick={depart}>View departure</button>}
+    <button onClick={openChart}>Open sleep voyage</button> {!span&&<button onClick={depart}>View departure</button>}
   </aside>;
 }

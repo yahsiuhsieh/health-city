@@ -9,10 +9,11 @@ type Point=[number,number,number];
 const quayZ=workingQuay.edge-1.24-WORK_BOAT_BERTH.position[1];
 export const stations:Record<string,Point>={...deckSockets,
   "quay-stern":[-10,workingQuay.top,quayZ],"quay-bow":[10,workingQuay.top,quayZ],
-  "quay-gate":[.54,workingQuay.top,quayZ],"jetty-gate":[.54,1.4,-3.82],"jetty-wait":[.54,1.4,-4.12],
+  "quay-gate":[.54,workingQuay.top,quayZ],"boarding-starboard":[.54,1.3,2.53],
+  "jetty-gate":[.54,1.4,3.82],"jetty-wait":[.54,1.4,4.12],
   "ladder-lip":[-5.96,3.76,0],"helm-seat":[-3.02,1.3,0],"hatch-clear":[5.25,1.3,1.65]};
 const edges:string[][]=[
-  ["quay-stern","quay-gate","quay-bow"],["quay-gate","boarding-port","jetty-gate","jetty-wait"],
+  ["quay-stern","quay-gate","quay-bow"],["quay-gate","boarding-port"],["side-starboard-fwd","boarding-starboard","jetty-gate","jetty-wait"],
   ["boarding-port","side-port-fwd"],["helm","helm-seat"],["ladder-base","ladder-lip","ladder-top"],["aft-deck","ladder-base"],
   ["side-starboard-fwd","hatch-clear","foredeck","bow-windlass"],
 ];
@@ -89,7 +90,7 @@ export function captainTrack(session:SleepSession,override?:Companion){
       const random=seededRandom(session.id,"round-"+s.index);
       if(end===total){
         move("helm",Math.min(end,s.start+500));
-        visit("boarding-port",end,"wait");
+        visit("boarding-starboard",end,"wait");
         continue;
       }
       visit("helm",Math.min(end,clock+190*(6+3*random())),"wheel");
@@ -107,9 +108,9 @@ export function captainTrack(session:SleepSession,override?:Companion){
       else {visit("wh-door-port",s.start+(end-s.start)*.66,"look");visit("helm",end,"wheel");}
     }else visit(s.stage==="DEEP"?"helm-seat":"helm",end,s.stage==="DEEP"?"seat":"wheel");
   }
-  visit("boarding-port",total+46,"line");hold(total+78,"line");
+  visit("boarding-starboard",total+46,"line");hold(total+78,"line");
   move("jetty-wait",total+338);hold(total+338,"wait");
-  move("boarding-port",total+600);move("helm",total+4200);hold(total+4200,"wheel");
+  move("boarding-starboard",total+600);move("helm",total+4200);hold(total+4200,"wheel");
   return legs;
 }
 const tracks=new WeakMap<SleepSession,Map<string,Leg[]>>();
