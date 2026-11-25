@@ -55,7 +55,7 @@ function timestamp(value: unknown): string {
   return Temporal.Instant.from(raw).toString();
 }
 
-function interval(value: unknown): { start: string; end: string } {
+export function interval(value: unknown): { start: string; end: string } {
   const data = object(value);
   const start = timestamp(data.startTime);
   const end = timestamp(data.endTime);
@@ -84,7 +84,7 @@ export function calorieInterval(point: unknown) {
   return { ...interval(data), value: calories == null ? null : number(calories) };
 }
 
-function list(value: unknown): unknown[] {
+export function list(value: unknown): unknown[] {
   if (value == null) return [];
   if (!Array.isArray(value)) throw new Error("Invalid Google Health list.");
   return value;

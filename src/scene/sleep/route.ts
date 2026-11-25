@@ -96,14 +96,15 @@ const approach=roundedCourse([turningBasin.center,[cx+dx/2-cornerRun,cz],
   [cx+dx/2+cornerRun,transitZ],[alignX,transitZ]],approachRadius);
 approach.add(line([alignX,transitZ],slipped));
 const smooth = (u: number) => u*u*(3-2*u);
-export const returnStops = {basinEntry:.60,basinExit:.87,alongside:.98};
-export function returnFrame(fraction: number, seconds=3600) {
-  const u = Math.max(0,Math.min(1,fraction));
+export function returnStops(seconds: number) {
   const pivot = Math.max(.27,Math.min(.49,342/seconds));
   const moving = (1-pivot)/.73;
-  const basinEntry = returnStops.basinEntry*moving, basinExit = basinEntry+pivot;
-  const alongside = 1-(1-returnStops.alongside)*moving;
-  const castOff=.02*moving;
+  const basinEntry = .60*moving;
+  return { basinEntry, basinExit:basinEntry+pivot, alongside:1-.02*moving, castOff:.02*moving, pivot };
+}
+export function returnFrame(fraction: number, seconds=3600) {
+  const u = Math.max(0,Math.min(1,fraction));
+  const {basinEntry,basinExit,alongside,castOff,pivot}=returnStops(seconds);
   if(u<castOff)return pose(JETTY_HEAD[0],JETTY_HEAD[1]-JETTY_SLIDE*(1-smooth(u/castOff)),-Math.PI,"lateral");
   if (u<basinEntry) return frameOn(inbound,inbound.getLength()*smooth((u-castOff)/(basinEntry-castOff)));
   if (u<basinExit) return pose(...turningBasin.center,Math.PI*(1-smooth((u-basinEntry)/pivot)),"pivot");

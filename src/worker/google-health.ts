@@ -1,5 +1,6 @@
 import { dailyHrvRmssd, inspectRecords, object } from "./health-data.ts";
 import type { DayWindow, InspectionData } from "./health-data.ts";
+import { replaySleep } from "./replay-sleep.ts";
 import { replayTotals } from "./replay-activity.ts";
 import type { ActivityStream } from "./replay-activity.ts";
 import { deriveHrvSkyline } from "../core/skyline.ts";
@@ -91,6 +92,23 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
     return { points, nextPageToken };
   }
 
+  async function replayPoints(kind: ActivityStream | "sleep", accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
+    const stream = streams.find(item => item.key === kind)!;
+    const points: unknown[] = [];
+    const seen = new Set<string>();
+    let token = "";
+    for (let page = 0; page < 5; page++) {
+      if (!await active()) throw new HealthCheckError("Sign-in required.", true);
+      const { points: records, nextPageToken } = await readPage(stream, window, accessToken, token, 5_000);
+      points.push(...records);
+      if (!nextPageToken) return points;
+      if (seen.has(nextPageToken)) throw new HealthCheckError("Google Health returned a repeated page token.");
+      seen.add(nextPageToken);
+      token = nextPageToken;
+    }
+    throw new HealthCheckError("The replay stream did not complete.");
+  }
+
   return {
     async readDailyHrv(accessToken: string, window: DayWindow, active: () => Promise<boolean>): Promise<number | null> {
       let token = "";
@@ -112,20 +130,10 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
       throw new HealthCheckError("The daily HRV read did not complete.");
     },
     async readReplayActivity(kind: ActivityStream, accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
-      const stream = streams.find(item => item.key === kind)!;
-      const points: unknown[] = [];
-      const seen = new Set<string>();
-      let token = "";
-      for (let page = 0; page < 5; page++) {
-        if (!await active()) throw new HealthCheckError("Sign-in required.", true);
-        const { points: records, nextPageToken } = await readPage(stream, window, accessToken, token, 5_000);
-        points.push(...records);
-        if (!nextPageToken) return replayTotals(kind, points, window);
-        if (seen.has(nextPageToken)) throw new HealthCheckError("Google Health returned a repeated page token.");
-        seen.add(nextPageToken);
-        token = nextPageToken;
-      }
-      throw new HealthCheckError("The replay activity read did not complete.");
+      return replayTotals(kind, await replayPoints(kind, accessToken, window, active), window);
+    },
+    async readReplaySleep(accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
+      return replaySleep(await replayPoints("sleep", accessToken, window, active), window);
     },
     async streamPage(accessToken: string, window: DayWindow, key: string, pageToken: string) {
       const stream = streams.find((item) => item.key === key);

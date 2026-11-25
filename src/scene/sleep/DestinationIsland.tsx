@@ -6,13 +6,12 @@ import { BoxGeometry,BufferGeometry,Color,CylinderGeometry,DoubleSide,Float32Buf
 import { useOcean,type OceanEnvironment } from "../ocean/OceanEnvironment.tsx";
 import { patchSand } from "../ocean/sand-material.ts";
 import { DRY_LAYER,SEABED_LAYER,WATER_LEVEL } from "../ocean/layers.ts";
-import { destination } from "./island-preview.ts";
 import { islandMesh } from "./island-mesh.ts";
 import { islandLayout,type Placement } from "./island-layout.ts";
 import type { IslandTerrain } from "./island-shape.ts";
 import { routeDistanceAt,returnDurations } from "./timeline.ts";
 import { ROUTE_LENGTH } from "./route.ts";
-import { elapsedSeconds,SYNTHETIC_SESSION } from "./session.ts";
+import { elapsedSeconds,type DaySleepVoyage } from "./session.ts";
 import type { Replay } from "../../core/replay.ts";
 
 function materials(ocean:OceanEnvironment,sand=false){
@@ -161,16 +160,17 @@ function islandModel(land:IslandTerrain,assets:Group,ocean:OceanEnvironment){
     for(const {mat,depth} of [props,sand,lamp]){mat.dispose();depth.dispose();}
   }};
 }
-export function DestinationIsland({onIsland,offset,replay}:{onIsland:()=>void;offset:number;replay:Replay}){
+export function DestinationIsland({onIsland,sleep,replay,land}:{onIsland:()=>void;sleep:DaySleepVoyage;replay:Replay;land:IslandTerrain}){
   const ocean=useOcean(),assets=useLoader(GLTFLoader,"/models/sleep-world.glb");
-  const model=useMemo(()=>islandModel(destination(),assets.scene,ocean),[assets,ocean]);
+  const model=useMemo(()=>islandModel(land,assets.scene,ocean),[assets,ocean,land]);
   const view=useMemo(()=>({matrix:new Matrix4(),previous:new Matrix4(),frustum:new Frustum()}),[model]);
   useFrame(({camera,size})=>{
     model.root.visible=ocean.uniforms.uIslandReveal.value>0;
     if(!model.root.visible)return;
-    const t=offset+replay.read().seconds,{wait,sail}=returnDurations(),since=t-elapsedSeconds(SYNTHETIC_SESSION);
-    let slide=Math.max(0,routeDistanceAt(SYNTHETIC_SESSION,t)-(ROUTE_LENGTH-1));
-    if(since>=wait){const u=Math.min(1,(since-wait)/(.02*sail));slide=1-u*u*(3-2*u);}
+    const {session,offset}=sleep;
+    const t=offset+replay.read().seconds,{wait,sail}=returnDurations(session.returnSeconds),since=t-elapsedSeconds(session);
+    let slide=Math.max(0,routeDistanceAt(session,t)-(ROUTE_LENGTH-1));
+    if(since>=wait){const u=sail ? Math.min(1,(since-wait)/(.02*sail)) : 1;slide=1-u*u*(3-2*u);}
     model.setFenders(slide);
     model.lamp.emissiveIntensity=ocean.uniforms.nightAmount.value*.9;
     const overview=size.width/camera.zoom>110;

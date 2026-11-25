@@ -1,12 +1,6 @@
-export type SleepStage = "LIGHT" | "DEEP" | "REM" | "AWAKE" | "ASLEEP";
-export interface SleepSegment { stage: SleepStage; start: number; end: number }
-export interface SleepSession {
-  id: string;
-  startDate: string;
-  endDate: string;
-  startSecondOfDay: number;
-  segments: SleepSegment[];
-}
+import type { SleepSession, SleepStage } from "../../core/sleep-replay.ts";
+export { asleepSeconds, elapsedSeconds, isAsleep } from "../../core/sleep-replay.ts";
+export type { DaySleepVoyage, SleepSession, SleepSegment, SleepSpan, SleepStage } from "../../core/sleep-replay.ts";
 
 export const departureDate = "2026-11-11", arrivalDate = "2026-11-12", departure = 23 * 3600;
 const intervals: [SleepStage, number][] = [
@@ -15,19 +9,10 @@ const intervals: [SleepStage, number][] = [
 ];
 let elapsed = 0;
 export const SYNTHETIC_SESSION: SleepSession = {
-  id: "synthetic-sleep-2026-11-11", startDate: departureDate, endDate: arrivalDate, startSecondOfDay: departure,
+  id: "synthetic-sleep-2026-11-11", startTime: "2026-11-12T05:00:00Z",
   segments: intervals.map(([stage, minutes]) => {
     const start = elapsed;
     elapsed += minutes * 60;
     return {stage, start, end: elapsed};
   }),
 };
-export function asleepSeconds(session: SleepSession) {
-  return session.segments.reduce((sum, segment) => sum + (segment.stage === "AWAKE" ? 0 : segment.end - segment.start), 0);
-}
-export function elapsedSeconds(session: SleepSession) { return session.segments.at(-1)?.end ?? 0; }
-export function dayOffset(date: string, example: boolean) {
-  if (!example) return null;
-  if (date === departureDate) return -departure;
-  return date === arrivalDate ? 86400 - departure : null;
-}

@@ -9,33 +9,33 @@ import { boatPose } from "../core/representative-day.ts";
 import type { Replay } from "../core/replay.ts";
 import { destination } from "./sleep/island-preview.ts";
 import { captainTrack } from "./sleep/captain.ts";
-import { SYNTHETIC_SESSION,elapsedSeconds } from "./sleep/session.ts";
+import { departure, elapsedSeconds, type DaySleepVoyage } from "./sleep/session.ts";
 import { voyage } from "./sleep-voyage.ts";
 import { workingQuay } from "./city/harbor-plan.ts";
 import { port } from "./port-layout.ts";
 import { workingLines as fastenings } from "./harbor-layout.ts";
 import { cargoPose } from "./port-motion.ts";
 
-const departures=captainTrack(SYNTHETIC_SESSION).filter(l=>l.action==="line"&&l.start<0);
-const arrivedAt=elapsedSeconds(SYNTHETIC_SESSION);
 const horizontal=new Vector3(1,0,0);
 const up = new Vector3(0, 1, 0);
 const ropeSegments = 6;
-export function MooringLines({ replay,offset }: { replay: Replay;offset:number|null }) {
+export function MooringLines({ replay,sleep }: { replay: Replay;sleep:DaySleepVoyage|null }) {
   const gangway = useRef<Mesh>(null);
   const ropes = useRef<InstancedMesh>(null);
   const rig = useMemo(() => ({
     ship: new Object3D(), segment: new Object3D(), from: new Vector3(), to: new Vector3(),
     start: new Vector3(), end: new Vector3(), direction: new Vector3(),
   }), []);
+  const departures=useMemo(()=>sleep?captainTrack(sleep.session).filter(l=>l.action==="line"&&l.start<0):[],[sleep]);
+  const arrivedAt=sleep?elapsedSeconds(sleep.session):0;
   useFrame(() => {
     if (!ropes.current) return;
-    const vessel=voyage(offset,replay.read().seconds);
-    const pier=vessel.stage==="At island"?destination().pier:null;
+    const vessel=voyage(sleep,replay.read().seconds);
+    const pier=vessel.stage==="At island"&&sleep?destination(sleep.session).pier:null;
     ropes.current.visible=vessel.moored || !!pier;
     if(gangway.current)gangway.current.visible=ropes.current.visible;
     if(!ropes.current.visible)return;
-    const pose = boatPose(vessel.moored?replay.read().seconds:vessel.t+SYNTHETIC_SESSION.startSecondOfDay,true);
+    const pose = boatPose(vessel.moored?replay.read().seconds:vessel.t+departure,true);
     const { ship, segment, from, to, start, end, direction } = rig;
     ship.position.set(vessel.x, pose.y + port.boatTrim, vessel.z);
     ship.rotation.set(pose.pitch, vessel.yaw, pose.roll);
@@ -46,7 +46,7 @@ export function MooringLines({ replay,offset }: { replay: Replay;offset:number|n
       from.applyMatrix4(ship.matrix);
       if(pier)to.set(pier[0]+(fastening.fairlead[0]>0?-6.2:6.2),1.75,pier[1]+.94);
       else to.set(fastening.bollardX, workingQuay.top+.34, workingQuay.edge-.6);
-      const fast=offset===null || (pier ? vessel.t>=arrivedAt+(i===0?64:28) : vessel.t>=0 || vessel.t<departures[i]!.end);
+      const fast=!sleep || (pier ? vessel.t>=arrivedAt+(i===0?64:28) : vessel.t>=0 || vessel.t<departures[i]!.end);
       start.copy(from);
       for (let k = 1; k <= ropeSegments; k++) {
         const t = k / ropeSegments;

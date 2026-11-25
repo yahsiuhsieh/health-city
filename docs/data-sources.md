@@ -350,7 +350,12 @@ The example GET and the owner-only HRV POST remain available at `/api/replay/dai
 - Activity reads allow up to five pages per stream. An incomplete sequence or invalid data marks that stream failed.
 - A completed stream preserves explicit zeros and leaves omitted buckets unavailable. Failure in one stream leaves successful streams usable.
 
-The Worker returns normalized values with no health history writes to D1.
+- Sleep uses the same bounded end-time filter as the manual inspection. It allows up to five pages.
+- A complete read returns whole sessions that intersect the selected day. A session that ends after the query window can escape retrieval.
+- Short awakenings override overlapping stages in the replay timeline. The timeline counts overlapping awake time once and retains each short awakening for inspection.
+- Missing or conflicting stage intervals remain unavailable. The replay uses an unclassified asleep interval when a stage-free record reports sleep for its full duration.
+- The Worker does not store sleep records in D1. The separate heart-rate snapshot policy still applies.
+
 Synthetic transport tests cover the replay contract.
 An authorized production check on November 21, 2026 loaded November 18 in America/Chicago.
 All three streams returned successfully. Their readers require completed pagination before they return values.
@@ -456,5 +461,9 @@ The initial bounded read exhausted heart-rate pagination. The manual continuatio
 This check does not measure how many HTTP pages the initial reader consumed or establish continuous sensor coverage.
 
 ### Heart-rate replay snapshots
+
+Migration `0003_heart_rate_days.sql` creates the table for heart-rate snapshots.
+If the snapshot write fails, the Worker still returns the valid Google Health values for the current replay.
+If the Google Health read fails, the Worker can use an existing snapshot for the same account, date, and time zone.
 
 One row stores the last complete Google Health read for an account, local date, and time zone. The account key links the snapshot to connection removal. The UTC start and end define the interval grid. Each JSON array position represents 300 seconds from the start. A number preserves the API mean in bpm. A null marks an unavailable mean. The source is Google Health heart-rate rollup for every row. The synchronization timestamp records the successful read time. The request timestamp prevents older concurrent reads from replacing newer reads.

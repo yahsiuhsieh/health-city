@@ -1,17 +1,17 @@
 import { BufferGeometry, Float32BufferAttribute, InstancedBufferAttribute, PlaneGeometry, DoubleSide, Color, Group, InstancedMesh, Mesh, MeshStandardMaterial, MeshBasicMaterial, Object3D, RingGeometry, SphereGeometry } from "three";
 import { DRY_LAYER, TRANSPARENT_LAYER } from "../ocean/layers.ts";
-import { SYNTHETIC_SESSION as session } from "./session.ts";
+import type { SleepSession } from "./session.ts";
 import { routeDistanceAt, routeSpans } from "./timeline.ts";
 import { routeFrame, S_MOUTH } from "./route.ts";
-import { destination } from "./island-preview.ts";
+import type { IslandTerrain } from "./island-shape.ts";
 import { clamp, companionState, dolphinAt, fishAt, lightEvents } from "./wildlife.ts";
 
 import { animalMaterial, type animalMotion } from "./animal-motion.ts";
 
 type Frame=ReturnType<typeof routeFrame>;
 
-export function wildlifeRig(library:Object3D,waterPass:{value:number}){
-  const root=new Group(),pose=new Object3D(),color=new Color(),reef=destination().reef;
+export function wildlifeRig(library:Object3D,waterPass:{value:number},session:SleepSession,land:IslandTerrain|null){
+  const root=new Group(),pose=new Object3D(),color=new Color(),reef=land?.reef;
   root.name="Stage wildlife";
   const meshes:InstancedMesh[]=[];
   function pool(name:string,source:Mesh,capacity:number,layer?:number){
@@ -80,7 +80,7 @@ export function wildlifeRig(library:Object3D,waterPass:{value:number}){
   function place(f:Frame,along:number,across:number,y:number){
     pose.position.set(f.x+f.tx*along+f.nx*across,y,f.z+f.tz*along+f.nz*across);
     pose.rotation.set(0,f.yaw,0,"YXZ");pose.scale.setScalar(1);
-    return pose.position.x>routeMouth && (pose.position.x<reef.bounds.left-30 || pose.position.z>reef.bounds.top+30 || reef.distance(pose.position.x,pose.position.z)>24);
+    return pose.position.x>routeMouth && (!reef || pose.position.x<reef.bounds.left-30 || pose.position.z>reef.bounds.top+30 || reef.distance(pose.position.x,pose.position.z)>24);
   }
   const routeMouth=routeFrame(S_MOUTH).x;
   function stamp(batch:InstancedMesh){

@@ -1,16 +1,16 @@
 import { useEffect,useMemo,useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Color,DataTexture,DoubleSide,Group,LinearFilter,RedFormat,Vector2,Vector3 } from "three";
-import { destination } from "./island-preview.ts";
+import type { IslandTerrain } from "./island-shape.ts";
 import { mistBank } from "./mist-bank.ts";
 import { TRANSPARENT_LAYER } from "../ocean/layers.ts";
 import { useOcean } from "../ocean/OceanEnvironment.tsx";
 import { noiseGLSL } from "../ocean/shore-shader.ts";
 
-export function SeaMist(){
+export function SeaMist({land}:{land:IslandTerrain}){
   const group=useRef<Group>(null),ocean=useOcean();
   const bank=useMemo(()=>{
-    const land=destination(),{center,halfX,halfZ,density,patches}=mistBank(land);
+    const {center,halfX,halfZ,density,patches}=mistBank(land);
     const width=Math.ceil(halfX),height=Math.ceil(halfZ),data=new Uint8Array(width*height);
     for(let j=0;j<height;j++)for(let i=0;i<width;i++){
       const x=center[0]+((i+.5)/width*2-1)*halfX,z=center[1]+(1-(j+.5)/height*2)*halfZ;
@@ -22,7 +22,7 @@ export function SeaMist(){
       patches:{value:patches.map(p=>new Vector3(p.x,p.z,p.radius))},jetty:{value:new Vector2(...land.pier)},
       reach:{value:Math.max(...land.reef.polygon.map(([x,z])=>Math.hypot(x-land.pier[0],z-land.pier[1])))},
       dayMist:{value:new Color("#e4efed")},nightMist:{value:new Color("#9fb3b8")}}};
-  },[ocean]);
+  },[land,ocean]);
   useEffect(()=>()=>bank.mask.dispose(),[bank]);
   useFrame(()=>{group.current!.visible=ocean.uniforms.uRevealS.value>=0 && ocean.uniforms.uIslandReveal.value<1;});
   return <group ref={group} name="Sea mist" position={[bank.center[0],0,bank.center[1]]}>

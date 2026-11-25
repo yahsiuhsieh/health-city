@@ -155,7 +155,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
         const means = await cached();
         if (!means || !await active()) return null;
         const failed = {status:"failed"};
-        return respondJson({date:window.date,timeZone:window.timeZone,hrv:failed,steps:failed,calories:failed,
+        return respondJson({date:window.date,timeZone:window.timeZone,hrv:failed,steps:failed,calories:failed,sleep:failed,
           cachedHeartRate:true,heartRate:{status:"ready",value:means}});
       };
       if (!usableConnection(connection, now)) return await fallback() ?? respondJson({ error: "authorization_required" }, 409);
@@ -168,11 +168,12 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
         return await fallback() ?? respondJson({ error: "authorization_failed" }, 503);
       }
       if (url.pathname === RECORDED_REPLAY_PATH) {
-        const [hrv, calories, steps, heart] = await Promise.allSettled([
+        const [hrv, calories, steps, heart, sleep] = await Promise.allSettled([
           health.readDailyHrv(accessToken, window, active),
           health.readReplayActivity("total-calories", accessToken, window, active),
           health.readReplayActivity("steps", accessToken, window, active),
           health.readReplayActivity("heart-rate", accessToken, window, active),
+          health.readReplaySleep(accessToken, window, active),
         ]);
         if (!await active()) return respondJson({ error: "sign_in_required" }, 401);
         const stream = <T>(result: PromiseSettledResult<T>): ReplayStream<T> =>
@@ -183,8 +184,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
           try {
             await saveHeartSnapshot(config.db,connection.google_sub,window,heartRate.value,now,clock());
           } catch {
-            // A failed snapshot transaction affects only the heart-rate stream.
-            heartRate={status:"failed"};
+            // Keep the current Google Health values if D1 cannot save the snapshot.
           }
         }
         if (heartRate.status==="failed") {
@@ -192,7 +192,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
           if (means) { heartRate={status:"ready",value:means}; cachedHeartRate=true; }
         }
         const replay: RecordedReplay = {
-          date: window.date, timeZone: window.timeZone, heartRate, cachedHeartRate, hrv: stream(hrv), calories: stream(calories), steps: stream(steps),
+          date: window.date, timeZone: window.timeZone, heartRate, cachedHeartRate, hrv: stream(hrv), calories: stream(calories), steps: stream(steps), sleep: stream(sleep),
         };
         if (!await active()) return respondJson({error:"sign_in_required"},401);
         return respondJson(replay);

@@ -1,7 +1,7 @@
 import { deckSockets } from "./deck-sockets.ts";
 import { seededRandom } from "./random.ts";
 import { elapsedSeconds, type SleepSession } from "./session.ts";
-import { routeSpans } from "./timeline.ts";
+import { routeSpans, returnDurations } from "./timeline.ts";
 import { companionState, type Companion } from "./wildlife.ts";
 import { WORK_BOAT_BERTH, workingQuay } from "../city/harbor-plan.ts";
 
@@ -108,9 +108,11 @@ export function captainTrack(session:SleepSession,override?:Companion){
       else {visit("wh-door-port",s.start+(end-s.start)*.66,"look");visit("helm",end,"wheel");}
     }else visit(s.stage==="DEEP"?"helm-seat":"helm",end,s.stage==="DEEP"?"seat":"wheel");
   }
-  visit("boarding-starboard",total+46,"line");hold(total+78,"line");
-  move("jetty-wait",total+338);hold(total+338,"wait");
-  move("boarding-starboard",total+600);move("helm",total+4200);hold(total+4200,"wheel");
+  const {wait,sail}=returnDurations(session.returnSeconds);
+  const dockTime=(seconds:number)=>total+wait*seconds/600;
+  visit("boarding-starboard",dockTime(46),"line");hold(dockTime(78),"line");
+  move("jetty-wait",dockTime(338));hold(dockTime(338),"wait");
+  move("boarding-starboard",total+wait);move("helm",total+wait+sail);hold(total+wait+sail,"wheel");
   return legs;
 }
 const tracks=new WeakMap<SleepSession,Map<string,Leg[]>>();

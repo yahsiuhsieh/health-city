@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { RECORDED_REPLAY_PATH } from "../core/recorded-replay.ts";
+import { napSleep, overnightSleep } from "../../tests/fixtures/sleep-replay.ts";
+import { parseRecordedReplay, RECORDED_REPLAY_PATH } from "../core/recorded-replay.ts";
 import { DAILY_HRV_PATH } from "../core/daily-hrv.ts";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
@@ -29,13 +30,15 @@ afterEach(() => { for (const db of databases.splice(0)) db.close(); });
 
 // This adapter executes the real migration and SQL against in-memory SQLite.
 // Only the D1 methods used by AuthStore are implemented here.
-function database() {
+function database(withHeartSnapshots: boolean) {
   const sql = new DatabaseSync(":memory:");
   databases.push(sql);
   sql.exec("PRAGMA foreign_keys = ON");
   sql.exec(readFileSync(new URL("../../migrations/0001_auth.sql", import.meta.url), "utf8"));
   sql.exec(readFileSync(new URL("../../migrations/0002_claimed_oauth_flows.sql", import.meta.url), "utf8"));
-  sql.exec(readFileSync(new URL("../../migrations/0003_heart_rate_days.sql", import.meta.url), "utf8"));
+  if (withHeartSnapshots) {
+    sql.exec(readFileSync(new URL("../../migrations/0003_heart_rate_days.sql", import.meta.url), "utf8"));
+  }
   function prepare(query: string) {
     let values: (string | number | null)[] = [];
     const statement = {
@@ -66,13 +69,14 @@ function database() {
   return { db, sql };
 }
 
-function fixture() {
-  const { db, sql } = database();
+function fixture({withHeartSnapshots = true} = {}) {
+  const { db, sql } = database(withHeartSnapshots);
   const state = {
     now: Date.UTC(2026, 10, 9, 18), nonce: "", challenge: "",
     claims: {} as Record<string, unknown>, tokenFields: {} as Record<string, unknown>,
     badSignature: false, providerFailure: false, revokeStatus: 200, revokeError: "", beforeToken: undefined as (() => Promise<void>) | undefined,
     refreshStatus: 200, beforeHealth: undefined as (() => Promise<void>) | undefined,
+    sleepStatus: 200, sleepResponse: {} as Record<string, unknown>,
     heartResponse: {} as Record<string, unknown>,dailyHrvResponse: {} as Record<string, unknown>,
   };
   const env: Env = {
@@ -86,6 +90,7 @@ function fixture() {
       if (url.endsWith("/identity")) return Response.json({ healthUserId: "synthetic-health-user" });
       await state.beforeHealth?.();
       if (url.includes("/daily-heart-rate-variability/")) return Response.json(state.dailyHrvResponse);
+      if (url.includes("/sleep/")) return Response.json(state.sleepResponse, {status:state.sleepStatus});
       if (url.includes("/heart-rate/")) return Response.json(state.heartResponse);
       if (!url.includes("/daily-resting-heart-rate/")) return Response.json({});
       return Response.json({ dataPoints: ["WITH_SLEEP", "ONLY_WITH_AWAKE_DATA"].map((method) => ({
@@ -199,8 +204,45 @@ describe("Google OAuth and owner sessions", () => {
       heartRate: { status:"ready",value:Array(288).fill(null) }, cachedHeartRate:false,
       calories: { status: "ready", value: Array(288).fill(null) },
       steps: { status: "ready", value: Array(288).fill(null) },
+      sleep: { status: "ready", value: [] },
     });
-    expect(f.fetcher).toHaveBeenCalledTimes(5);
+    expect(f.fetcher).toHaveBeenCalledTimes(6);
+  });
+
+  it("delivers normalized sleep and keeps the other streams usable if sleep fails", async () => {
+    const f = fixture(), cookie = await signedIn(f);
+    f.env.GOOGLE_HRV_REPLAY_ENABLED = "true";
+    const date = "2026-11-08", timeZone = "America/Chicago";
+    const body = new URLSearchParams({date,timeZone}).toString();
+    const read = async () => {
+      const response = await f.request(RECORDED_REPLAY_PATH, "POST", cookie, origin, body);
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      return parseRecordedReplay(payload, date, timeZone, 86400);
+    };
+    f.state.sleepResponse = {dataPoints:[overnightSleep,napSleep]};
+    expect((await read())?.sleep).toMatchObject({status:"ready",value:[{startTime:"2026-11-08T05:00:00Z"},{startTime:"2026-11-08T20:00:00Z"}]});
+    f.state.sleepStatus = 503;
+    expect(await read()).toMatchObject({sleep:{status:"failed"},steps:{status:"ready"},hrv:{status:"ready"}});
+  });
+
+  it.each(["2026-11-04", "2026-11-08"])("returns valid heart rate for %s before the snapshot migration", async date => {
+    const f = fixture({withHeartSnapshots:false}), cookie = await signedIn(f);
+    f.env.GOOGLE_HRV_REPLAY_ENABLED = "true";
+    const timeZone = "America/Chicago", body = new URLSearchParams({date,timeZone}).toString();
+    const read = async () => {
+      const response = await f.request(RECORDED_REPLAY_PATH, "POST", cookie, origin, body);
+      expect(response.status).toBe(200);
+      return parseRecordedReplay(await response.json(), date, timeZone, 86400);
+    };
+    f.state.heartResponse = {rollupDataPoints:[{
+      startTime: date + "T06:00:00Z", endTime: date + "T06:05:00Z", heartRate:{beatsPerMinuteAvg:67.381},
+    }]};
+    expect(await read()).toMatchObject({
+      cachedHeartRate:false, heartRate:{status:"ready",value:[67.381,...Array(287).fill(null)]},
+    });
+    f.state.heartResponse = {rollupDataPoints:null};
+    expect(await read()).toMatchObject({cachedHeartRate:false,heartRate:{status:"failed"},steps:{status:"ready"}});
   });
 
   it("keeps the last complete heart-rate snapshot and applies confirmed corrections and removals",async()=>{

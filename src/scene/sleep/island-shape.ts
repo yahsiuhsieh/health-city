@@ -25,7 +25,7 @@ export function polygonArea(poly:readonly Point[]){
   return Math.abs(poly.reduce((sum,a,i)=>{const b=poly[(i+1)%poly.length]!;return sum+a[0]*b[1]-b[0]*a[1];},0))*.5;
 }
 export function stageMinutes(session:SleepSession){
-  const totals:Record<SleepStage,number>={LIGHT:0,DEEP:0,REM:0,AWAKE:0,ASLEEP:0};
+  const totals:Record<SleepStage,number>={LIGHT:0,DEEP:0,REM:0,AWAKE:0,ASLEEP:0,RESTLESS:0,UNKNOWN:0};
   for(const span of session.segments)totals[span.stage]+=(span.end-span.start)/60;
   return totals;
 }

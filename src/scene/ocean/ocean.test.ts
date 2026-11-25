@@ -1,3 +1,4 @@
+import { SYNTHETIC_SESSION } from "../sleep/session.ts";
 import { describe,expect,it } from "vitest";
 import { Color,DataUtils } from "three";
 import { coast } from "../coastline.ts";
@@ -67,9 +68,9 @@ describe("boat wake",()=>{
     expect(previewWake.sample(previewStop+190).strength).toBe(.5);
     expect(previewWake.sample(previewStop+380).strength).toBe(0);
     expect(voyageWake(null).sample(43200).strength).toBe(0);
-    expect(voyageWake(0).sample(sessionSeconds+9000).strength).toBe(0);
-    expect(voyageWake(0).sample(wake.start+190).strength).toBe(.5);
-    const active=voyageWake(0).sample(8640);
+    expect(voyageWake({session:SYNTHETIC_SESSION,offset:0,timeZone:"America/Chicago"}).sample(sessionSeconds+9000).strength).toBe(0);
+    expect(voyageWake({session:SYNTHETIC_SESSION,offset:0,timeZone:"America/Chicago"}).sample(wake.start+190).strength).toBe(.5);
+    const active=voyageWake({session:SYNTHETIC_SESSION,offset:0,timeZone:"America/Chicago"}).sample(8640);
     expect(active.strength).toBe(1);expect(active.points.length).toBeGreaterThan(1);
   });
 });

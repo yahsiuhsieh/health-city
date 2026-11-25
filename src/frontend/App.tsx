@@ -7,8 +7,10 @@ import {
   STEPS_PER_FIGURE, lastEndedReplayDate, recordedReplayDay, stepsAt, SYNTHETIC_DAYS, trafficAt,
 } from "../core/representative-day.ts";
 import { VoyageChart } from "./VoyageChart.tsx";
-import { SleepDetails,sleepLabel } from "./SleepDetails.tsx";
-import { arrivalDate,dayOffset,departure,departureDate,voyage } from "../scene/sleep-voyage.ts";
+import { SleepDetails,sleepFormatter,sleepLabel } from "./SleepDetails.tsx";
+import { arrivalDate,departure,departureDate,voyage } from "../scene/sleep-voyage.ts";
+import { asleepSeconds, daySleepVoyages, voyageAt, type SleepSpan } from "../core/sleep-replay.ts";
+import { SYNTHETIC_SESSION } from "../scene/sleep/session.ts";
 import { deriveHrvSkyline, thresholdMs } from "../core/skyline.ts";
 import { isTowerView, skylineDisplay, TOWER_DESIGNS } from "../scene/skyline-layout.ts";
 import type { CameraCommand, SceneView, TowerDesignId } from "../scene/skyline-layout.ts";
@@ -51,8 +53,18 @@ export function App() {
   const hrv = deriveHrvSkyline(loadState.status === "ready" ? loadState.rmssdMs : null);
   const district = skylineDisplay(hrv);
   const usingExamples = source === "synthetic";
-  const offset=dayOffset(day.date,usingExamples);
-  const journey=voyage(offset,clock.seconds);
+  const [selectedSleepId, setSelectedSleepId] = useState<string>();
+  const [wakeRecord, setWakeRecord] = useState<{id:string; span:SleepSpan}>();
+  const sleepStream = recorded?.sleep;
+  const sleepVoyages = useMemo(() => {
+    const sessions = usingExamples
+      ? day.date === departureDate || day.date === arrivalDate ? [SYNTHETIC_SESSION] : []
+      : sleepStream?.status === "ready" ? sleepStream.value : [];
+    return daySleepVoyages(sessions, day.date, day.zone);
+  }, [day.date, day.zone, sleepStream, usingExamples]);
+  const sleep = voyageAt(sleepVoyages, clock.seconds, selectedSleepId);
+  const hasIsland = !!sleep && asleepSeconds(sleep.session)>0;
+  const journey = voyage(sleep, clock.seconds);
   const loadMessage = {
     idle: "Choose a date and load the day.",
     loading: "Loading day…",
@@ -61,9 +73,13 @@ export function App() {
     error: "Could not load this day.",
     ready: "Day loaded.",
   }[loadState.status];
+  const sleepStatus = sleep ? sleepLabel(journey.stage) + (usingExamples ? " · Synthetic sleep" : " · Google Health")
+    : usingExamples ? "Demo voyage · Nov 11–12"
+    : loadState.status !== "ready" ? loadMessage
+    : sleepStream?.status === "ready" ? "No sleep record" : "Sleep read failed";
   const failedStreams = recorded && [
     recorded.heartRate.status === "failed" && "heart rate", recorded.hrv.status === "failed" && "HRV", recorded.steps.status === "failed" && "steps",
-    recorded.calories.status === "failed" && "total energy",
+    recorded.calories.status === "failed" && "total energy", recorded.sleep.status === "failed" && "sleep",
   ].filter(Boolean);
   const hrvStatus = loadState.status !== "ready" ? loadMessage
     : recorded?.hrv.status === "failed" ? "HRV read failed" : "No HRV data";
@@ -90,13 +106,22 @@ export function App() {
   const onRoadReady = useCallback(() => setRoadReady(true), []);
   const onGraphicsLost = useCallback(() => { replay.pause(); setGraphicsLost(true); }, [replay]);
   const [heartSpan,setHeartSpan]=useState([0,1] as [number,number]);
+  const heartMean = day.heartMeans[heartSpan[0]];
   const selectHeart=(a:number,b:number)=>{replay.pause();setHeartSpan([a,b]);setSelected("heart")};
   const heartReady=usingExamples||recorded?.heartRate.status==="ready";
   const heartStatus=heartReady?(recorded?.cachedHeartRate?"Cached Google Health":usingExamples?"Synthetic data":"Google Health"):loadState.status==="ready"?"Heart-rate read failed":loadMessage;
   const ridgeView=cameraCommand.view==="ridge";
   const sleepView=cameraCommand.view.startsWith("sleep");
-  const chartOpen=selected==="chart" && offset!==null;
+  const chartOpen=selected==="chart" && !!sleep;
   const sleepContext=sleepView||chartOpen;
+  const selectSleep = (id:string) => {
+    setSelectedSleepId(id || undefined);
+    const entry = sleepVoyages.find(item => item.session.id === id);
+    if (!entry) return;
+    replay.pause();
+    replay.seek(Math.max(0, -entry.offset));
+    if (selected === "wake") setSelected("sleep");
+  };
   const inspectButton=useRef<HTMLButtonElement>(null);
   const openChart=()=>{replay.pause();setSelected("chart");};
   const closeChart=useCallback(()=>{
@@ -137,6 +162,7 @@ export function App() {
     replay.pause();
     setReplayDay({ day: nextDay, replay: nextReplay, source: nextSource });
     setSelected(null);
+    setSelectedSleepId(undefined);
   };
   const selectDate = (date: string) => {
     if (usingExamples) {
@@ -157,7 +183,7 @@ export function App() {
   const inspectWalk = walkView || cameraCommand.view === "square" || cameraCommand.view === "side";
   const skylineView = !!focusedTower || cameraCommand.view === "skyline" || cameraCommand.view === "world";
   const inspectFocus = () => {
-    if(sleepView){if(offset===null){showDeparture();return;}replay.pause();setSelected("sleep");}
+    if(sleepView){if(!sleep&&usingExamples){showDeparture();return;}replay.pause();setSelected(sleep?"sleep":"boat");}
     else if (ridgeView) { const i=Math.min(day.heartMeans.length-1,Math.floor(clock.seconds/300));selectHeart(i,i+1); }
     else if (focusedTower) selectTower(focusedTower.id);
     else if (skylineView) selectSkyline();
@@ -184,7 +210,6 @@ export function App() {
         <span className="sr-only">Replay source</span>
         <select value={source} onChange={event => {
           const nextSource = event.target.value as HrvSource;
-          if(sleepView && nextSource!=="synthetic") setView("world");
           switchDay(nextSource === "synthetic" ? SYNTHETIC_DAYS[0] : recordedReplayDay(lastEndedReplayDate()), nextSource);
         }}>
           <option value="synthetic">Synthetic data</option>
@@ -197,8 +222,8 @@ export function App() {
     <section className={chartOpen?"world has-chart":"world"} aria-label="Interactive HealthCity scene">
       <div className={sleepView ? "scene-heading voyage-scene-heading" : inspectWalk || roadView ? "scene-heading harbor-activity-heading" : "scene-heading"}>
         <h1>{cityPreview ? cameraCommand.view==="walk"?"Market crossing":cameraCommand.view==="detail"?"Working boat":cameraCommand.view==="world"?"City overview":cameraCommand.view==="skyline"?"Waterfront block":sceneTitle : sceneTitle}</h1>
-        {sleepView && <p>{offset===null?"Demo voyage · Nov 11–12":sleepLabel(journey.stage)+" · Synthetic sleep"}</p>}
-        {sleepView && offset===null && usingExamples && <button onClick={showDeparture}>View Nov 11 departure</button>}
+        {sleepView && <p>{sleepStatus}</p>}
+        {sleepView && !sleep && usingExamples && <button onClick={showDeparture}>View Nov 11 departure</button>}
         {ridgeView && <p>{heartReady && day.heartMeans.every(v=>v===null)?"No heart-rate data":heartStatus}</p>}
         {focusedTower && <p>{focusedTower.style + " · Design preview"}</p>}
         {skylineView && <p className="skyline-summary">{hrv.status === "available"
@@ -209,8 +234,8 @@ export function App() {
       <div className="scene-canvas" data-testid="scene-canvas">
         <SceneBoundary onFailure={onGraphicsLost}>
           <Suspense fallback={<div className="scene-message" role="status">Loading the harbor…</div>}>
-            <BoatScene offset={offset} onIsland={openChart} onWake={()=>{replay.pause();setSelected("wake")}} onHeart={selectHeart} heartReady={!!heartReady} replay={replay} day={day} night={night} cameraCommand={cameraCommand} hrv={hrv}
-              onSelect={offset!==null && !cityPreview?openChart:selectBoat} onSelectBerth={selectBerth} onGraphicsLost={onGraphicsLost}
+            <BoatScene sleep={sleep} onIsland={openChart} onWake={span=>{if(sleep){replay.pause();setWakeRecord({id:sleep.session.id,span});setSelected("wake");}}} onHeart={selectHeart} heartReady={!!heartReady} replay={replay} day={day} night={night} cameraCommand={cameraCommand} hrv={hrv}
+              onSelect={sleep && !cityPreview?openChart:selectBoat} onSelectBerth={selectBerth} onGraphicsLost={onGraphicsLost}
               onBoatReady={onBoatReady} onBerthReady={onBerthReady}
               onSkylineReady={onSkylineReady} onWalkReady={onWalkReady}
               onRoadReady={onRoadReady} onSelectTower={selectTower} onPlot={selectPlot} />
@@ -224,7 +249,7 @@ export function App() {
         <label className="view-picker"><span className="sr-only">Scene view</span>
           <select aria-label="Scene view" value={cameraCommand.view} onChange={event => setView(event.target.value as SceneView)}>
             {cityPreview?<><option value="world">World overview</option><option value="skyline">Waterfront block</option><option value="walk">Market crossing</option><option value="harbor">Harbor view</option><option value="cargo">Cargo berth</option><option value="berth">Working quay</option><option value="detail">Working boat</option></>:<>
-            {usingExamples && <><option value="sleep">Sleep voyage</option><option value="sleep-island">Sleep island</option></>}
+            <option value="sleep">Sleep voyage</option><option value="sleep-island" disabled={!usingExamples && !hasIsland}>Sleep island</option>
             <option value="ridge">Heart-rate mountains</option>
             <option value="world">World overview</option>
             <option value="skyline">Skyline overview</option>
@@ -250,18 +275,20 @@ export function App() {
 
       {selected === "heart" && <aside className="record-card" aria-label="Heart-rate interval"><div className="card-heading"><h2>Heart rate</h2><button aria-label="Close heart rate" onClick={()=>setSelected(null)}>×</button></div>
         <p>{day.intervalLabel(heartSpan[0]*300)} – {day.intervalLabel(heartSpan[1]*300)}</p>
-        <p>{heartReady?(day.heartMeans[heartSpan[0]]==null?"No heart-rate data":day.heartMeans[heartSpan[0]]+" bpm · Five-minute mean"):heartStatus}</p>
+        <p>{heartReady?(heartMean==null?"No heart-rate data":heartMean.toFixed(2)+" bpm · Five-minute mean"):heartStatus}</p>
         {heartReady && <p>{heartStatus}</p>}</aside>}
-      {(selected==="wake"||selected==="sleep")&&
-        <SleepDetails kind={selected} close={()=>setSelected(null)} depart={showDeparture} openChart={openChart}/>}
-      {chartOpen&&<VoyageChart time={clock.seconds+offset} close={closeChart}/>}
+      {sleep && (selected==="wake"||selected==="sleep") &&
+        <SleepDetails sleep={sleep} synthetic={usingExamples}
+          wake={selected==="wake"&&wakeRecord?.id===sleep.session.id?wakeRecord.span:undefined}
+          close={()=>setSelected(null)} depart={usingExamples?showDeparture:undefined} openChart={openChart}/>}
+      {chartOpen && sleep && <VoyageChart key={sleep.session.id} sleep={sleep} time={clock.seconds+sleep.offset} close={closeChart}/>}
       {selected === "boat" && <aside className="record-card" aria-labelledby="boat-title">
         <div className="card-heading"><h2 id="boat-title">The harbor boat</h2><button aria-label="Close boat details" onClick={() => setSelected(null)}>×</button></div>
         <p>A working vessel for HealthCity’s sleep journeys.</p>
         <dl><div><dt>Current scene</dt><dd>{sleepLabel(journey.stage)}</dd></div>
           <div><dt>Movement</dt><dd>Synthetic boat and water motion</dd></div>
-          <div><dt>Sleep records</dt><dd>{offset===null?"Not connected":"Nov 11–12 demo session"}</dd></div></dl>
-        {usingExamples && <button onClick={()=>{if(offset===null)showDeparture();else{setSelected(null);setView("sleep")}}}>Follow sleep voyage</button>}
+          <div><dt>Sleep records</dt><dd>{sleepStatus}</dd></div></dl>
+        {usingExamples && <button onClick={()=>{if(!sleep)showDeparture();else{setSelected(null);setView("sleep")}}}>Follow sleep voyage</button>}
       </aside>}
       {selected === "berth" && <aside className="record-card" aria-labelledby="berth-title">
         <div className="card-heading"><h2 id="berth-title">The cargo berth</h2><button aria-label="Close berth details" onClick={() => setSelected(null)}>×</button></div>
@@ -341,6 +368,14 @@ export function App() {
         </div>
         <div className="clock"><output aria-label="Replay time">{timeLabel}</output><span>{clock.playing ? "Playing" : "Paused"}</span></div>
       </div>
+      {sleepVoyages.length > 1 && <label className="speed-control">Sleep session <select
+        value={selectedSleepId && sleepVoyages.some(item=>item.session.id===selectedSleepId) ? selectedSleepId : ""}
+        onChange={event=>selectSleep(event.target.value)}>
+        <option value="">Follow replay</option>
+        {sleepVoyages.map(entry=><option value={entry.session.id} key={entry.session.id}>
+          {sleepFormatter(entry,{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",hourCycle:"h23"})(0)}
+        </option>)}
+      </select></label>}
       <label className="sr-only" htmlFor="replay-time">Replay time</label>
       <input id="replay-time" type="range" min="0" max={replay.durationSeconds} step="1"
         value={Math.floor(clock.seconds)} aria-valuetext={timeLabel} onChange={event => replay.seek(Number(event.target.value))} />

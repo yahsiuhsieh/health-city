@@ -6,7 +6,7 @@ import type { Replay } from "../../core/replay.ts";
 import { footfall } from "../walk-gait.ts";
 import { DRY_LAYER } from "../ocean/layers.ts";
 import { captainAt } from "./captain.ts";
-import { SYNTHETIC_SESSION as session } from "./session.ts";
+import { SYNTHETIC_SESSION, type DaySleepVoyage } from "./session.ts";
 import { companionState,dolphinAt,previewCompanion } from "./wildlife.ts";
 
 function captainRig(source:Mesh){
@@ -26,13 +26,14 @@ function captainRig(source:Mesh){
   root.name="Voyage captain";model.name="Articulated captain";root.add(model);
   return {model,root,bones,dispose(){geometry.dispose();model.skeleton.dispose();}};
 }
-export function Captain({offset,replay}:{offset:number|null;replay:Replay}){
+export function Captain({sleep,replay}:{sleep:DaySleepVoyage|null;replay:Replay}){
   const {scene}=useLoader(GLTFLoader,"/models/harbor-fleet.glb");
   const rig=useMemo(()=>captainRig(scene.getObjectByName("Captain") as Mesh),[scene]);
   const fixed=useMemo(()=>new Vector3(),[]);
   useEffect(()=>()=>rig.dispose(),[rig]);
   useFrame(()=>{
-    const t=offset===null?0:offset+replay.read().seconds;
+    const session=sleep?.session??SYNTHETIC_SESSION;
+    const t=sleep?sleep.offset+replay.read().seconds:0;
     const state=captainAt(session,t,previewCompanion),{action}=state,{root,bones}=rig;
     const ship=root.parent!;
     root.position.fromArray(state.position);root.rotation.set(0,state.yaw,0);

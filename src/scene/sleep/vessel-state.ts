@@ -5,8 +5,8 @@ const smooth=(v:number)=>{const u=Math.max(0,Math.min(1,v));return u*u*(3-2*u);}
 function cabin(stage?:SleepStage){
   return {closed:Number(stage==="DEEP"),bright:Number(stage==="AWAKE")};
 }
-export function cabinState(session:SleepSession,t:number){
-  const spans=routeSpans(session),span=t>=0?spans.find(s=>t<s.end):undefined;
+export function cabinState(session:SleepSession|undefined,t:number){
+  const spans=session?routeSpans(session):[],span=t>=0?spans.find(s=>t<s.end):undefined;
   const from=cabin(span?spans[span.index-1]?.stage:t>=0?spans.at(-1)?.stage:undefined),to=cabin(span?.stage);
   const u=smooth((t-(span?.start??spans.at(-1)?.end??0))/90);
   const closed=from.closed+(to.closed-from.closed)*u,bright=from.bright+(to.bright-from.bright)*u;

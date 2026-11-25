@@ -3,7 +3,7 @@
 HealthCity turns Google Health records into an explorable 3D daily life record.
 The accepted architecture uses a browser-rendered React/R3F application and a Cloudflare Worker with Static Assets and D1.
 The frontend contains a harbor with pedestrians, road traffic, and an HRV skyline. The default scene uses synthetic data.
-A manual day replay for HRV, steps, and total energy is available behind a Worker flag. Automatic synchronization and stored replay history are pending.
+A Worker flag enables manual day replay for Google Health records. Automatic synchronization is pending.
 
 ## Frontend foundation
 
@@ -40,7 +40,10 @@ Select **Sleep island** to inspect the coral cay, reef platform, and jetty. Clic
 The 911.14 m outbound route passes north of the outer reef. The boat reaches the south jetty heading west. At 06:40, it casts off and returns south of the reef. It reaches the working quay at 07:40. [Harbor and route review](design/visual-studies/sleep-voyage-v3/checkpoint-d/README.md)
 The harbor review includes the berth, departure, and return under both lighting settings. [Checkpoint A](design/visual-studies/sleep-voyage-v3/checkpoint-a/README.md)
 The island review shows six cay sizes at a common scale and the boat leaving the jetty. [Checkpoint B](design/visual-studies/sleep-voyage-v3/checkpoint-b/README.md)
-The recorded Google Health sleep feed still needs a scene integration.
+To replay recorded sleep, select **Google Health**, choose an ended date, and select **Load day**. Select **Sleep voyage** in **Scene view**.
+The boat, card, and island follow the same session. If the day has several sessions, use **Sleep session** to inspect one or follow the replay time.
+Load either date of a session that crosses midnight to replay that day's part of the same session. The card shows the complete session dates.
+A successful read with no intersecting session displays **No sleep record**. A failed read displays **Sleep read failed**.
 
 ### HRV skyline
 
@@ -57,9 +60,9 @@ The Worker provides example data through `GET /api/replay/daily-hrv?date=YYYY-MM
 The `GOOGLE_HRV_REPLAY_ENABLED` flag enables the **Google Health** source option. The flag starts disabled.
 Select **Google Health**, choose one ended date, and click **Load day**.
 The same-origin POST to `/api/replay/day` requires an active owner session.
-It reads daily HRV, reconciled steps, and five-minute total energy for the selected date.
+It reads daily HRV, reconciled steps and sleep, and five-minute total energy and heart rate for the selected date.
 Each successful stream can drive replay if another stream fails. The inspection cards show values for the current interval.
-The Worker sends normalized records to the browser without storing them in D1.
+The Worker sends normalized records to the browser. Only the existing heart-rate snapshot uses D1.
 Synthetic upstream responses cover this flow in tests.
 The authorized production check on November 21, 2026 loaded November 18 in America/Chicago.
 All three streams returned successfully. Inspection cards confirmed HRV, steps, and total-energy mappings.
@@ -374,7 +377,9 @@ The generated `dist/healthcity/wrangler.json` references the browser output. Bui
 There is no configured lint command yet.
 
 Run `npm run dev` only when a local server is needed and startup has authorization.
+Check the target D1 migration status before deployment. Apply pending migrations with separate authorization.
 Run `npm run deploy` only when a deployment has authorization.
+`npm run deploy` updates the Worker and static assets.
 Wrangler uses the existing Cloudflare login. The project commands disable telemetry and keep logs in `.wrangler/logs`.
 
 Vite and the Cloudflare plugin serve the frontend and Worker under one local origin.

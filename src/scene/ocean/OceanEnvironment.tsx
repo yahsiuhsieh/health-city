@@ -7,7 +7,7 @@ import { revealDistanceAt, islandRevealAt } from "../sleep/timeline.ts";
 import { islandSeabed,outerReefSeabed } from "../sleep/reef.ts";
 import { destination } from "../sleep/island-preview.ts";
 import { ROUTE_LENGTH } from "../sleep/route.ts";
-import { SYNTHETIC_SESSION } from "../sleep/session.ts";
+import { asleepSeconds, type DaySleepVoyage } from "../sleep/session.ts";
 import { ambientTime } from "./ambient-time.ts";
 import { shelfMounds } from "./mounds.ts";
 
@@ -15,8 +15,7 @@ import { waterNoiseTexture, causticEdgeTexture } from "./pattern-textures.ts";
 import type { SeabedOptions } from "./seabed.ts";
 import { buildSeabed } from "./seabed.ts";
 
-function makeOcean(hasIsland: boolean, coastline?: SeabedOptions["coastline"]) {
-  const island=hasIsland?destination():undefined;
+function makeOcean(island: ReturnType<typeof destination> | null, coastline?: SeabedOptions["coastline"]) {
   const bed = buildSeabed({coastline, features: coastline ? [] : shelfMounds()});
   const islandBed = island ? islandSeabed(island) : null;
   const outerBed=coastline ? null : outerReefSeabed();
@@ -39,11 +38,11 @@ export type OceanEnvironment = ReturnType<typeof makeOcean>;
 const Context = createContext<OceanEnvironment | null>(null);
 export function useOcean() { return useContext(Context)!; }
 
-export function OceanProvider({ replay, night, offset, children, coastline }: {
-  replay: Replay; night: boolean; offset: number | null; children: ReactNode; coastline?:SeabedOptions["coastline"];
+export function OceanProvider({ replay, night, sleep, children, coastline }: {
+  replay: Replay; night: boolean; sleep: DaySleepVoyage | null; children: ReactNode; coastline?:SeabedOptions["coastline"];
 }) {
-  const hasIsland = offset !== null;
-  const ocean = useMemo(() => makeOcean(hasIsland,coastline), [hasIsland,coastline]);
+  const land = sleep && asleepSeconds(sleep.session)>0 ? destination(sleep.session) : null;
+  const ocean = useMemo(() => makeOcean(land,coastline), [land,coastline]);
   useEffect(() => () => {
     ocean.bed.texture.dispose();
     ocean.islandBed?.texture.dispose();
@@ -55,10 +54,10 @@ export function OceanProvider({ replay, night, offset, children, coastline }: {
     const seconds = replay.read().seconds;
     ocean.uniforms.oceanTime.value = ambientTime(seconds);
     ocean.uniforms.nightAmount.value = Number(night);
-    const t=offset===null?-1:offset+seconds;
-    const distance=revealDistanceAt(SYNTHETIC_SESSION,t);
+    const t=sleep ? sleep.offset+seconds : -1;
+    const distance=sleep && land ? revealDistanceAt(sleep.session,t) : -1;
     ocean.uniforms.uRevealS.value=distance;
-    ocean.uniforms.uIslandReveal.value=islandRevealAt(SYNTHETIC_SESSION,t);
+    ocean.uniforms.uIslandReveal.value=sleep && land ? islandRevealAt(sleep.session,t) : 0;
     ocean.uniforms.reveal.value=Math.max(0,distance/ROUTE_LENGTH)+(60/ROUTE_LENGTH)*ocean.uniforms.uIslandReveal.value;
   }, -1);
   return <Context.Provider value={ocean}>{children}</Context.Provider>;

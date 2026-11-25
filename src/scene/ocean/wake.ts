@@ -3,7 +3,7 @@ import { HARBOR_MOUTH } from "../city/harbor-plan.ts";
 import { sessionSeconds, voyage } from "../sleep-voyage.ts";
 
 import { wakePath,wakeStrength } from "../sleep/timeline.ts";
-import { SYNTHETIC_SESSION } from "../sleep/session.ts";
+import { SYNTHETIC_SESSION, type DaySleepVoyage } from "../sleep/session.ts";
 
 export interface WakePoint { x: number; z: number; behind: number }
 export interface WakeSample {
@@ -20,10 +20,10 @@ const sternOffset = 9.94;
 const beam = 5.6;
 const fade = (seconds: number) => Math.max(0, 1-ambientTime(seconds)/2);
 
-export function voyageWake(offset: number | null): WakeSource {
+export function voyageWake(sleep: DaySleepVoyage | null): WakeSource {
   return {sample(seconds){
-    const ship=voyage(offset,seconds),strength=wakeStrength(SYNTHETIC_SESSION,ship.t);
-    return {points:strength?wakePath(SYNTHETIC_SESSION,ship.t):[],strength,beam,stopped:ship.stage==="AWAKE",stage:ship.stage,yaw:ship.yaw};
+    const ship=voyage(sleep,seconds),strength=sleep?wakeStrength(sleep.session,ship.t):0;
+    return {points:strength&&sleep?wakePath(sleep.session,ship.t):[],strength,beam,stopped:ship.stage==="AWAKE",stage:ship.stage,yaw:ship.yaw};
   }};
 }
 
@@ -61,12 +61,14 @@ export const previewWake: WakeSource = {sample(seconds) {
   return {points,strength,beam,stopped:seconds%(previewStop+1200)>=previewStop,yaw:previewStern(distance).yaw};
 }};
 
+const previewVoyage = {session:SYNTHETIC_SESSION,offset:0,timeZone:"America/Chicago"};
+
 export function boatPathSamples(includeVoyage: boolean, includePreview: boolean) {
   const points: {x:number;z:number}[]=[voyage(null,0)];
   if(includeVoyage) {
     let last = points[0]!;
     for(let t=0;t<=sessionSeconds+4200;t+=5) {
-      const ship=voyage(0,t);
+      const ship=voyage(previewVoyage,t);
       if(Math.hypot(ship.x-last.x,ship.z-last.z)>=.5) {points.push(ship); last=ship;}
     }
   }
