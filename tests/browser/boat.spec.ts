@@ -6,13 +6,13 @@ test.beforeEach(async ({ page }) => {
     const url = new URL(route.request().url());
     return url.origin === "http://127.0.0.1:8787" ? route.continue() : route.abort();
   });
-  const names = ["city-kit", "city-flora", "harbor-fleet", "city-working-boat", "cargo-berth", "harbor-pedestrian",
+  const names = ["city-kit", "city-flora", "harbor-fleet", "city-working-boat", "fish-market", "harbor-pedestrian",
     "pedestrian-commuter", "pedestrian-hiker", "pedestrian-crew", "pedestrian-promenade", "pedestrian-child", "pedestrian-shopper",
     "vehicle-van", "vehicle-saloon", "vehicle-hatchback", "vehicle-pickup",
     "tower-glass", "tower-deco", "tower-concrete", "tower-ribbon", "tower-brick"];
   const models = Promise.all(names.map(name =>
     page.waitForResponse(response => response.url().endsWith("/models/" + name + ".glb") && response.ok())));
-  await page.goto("/");
+  await page.goto("/?reviewViews=1");
   await expect(page.locator("canvas")).toBeVisible();
   await models;
   await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
@@ -50,28 +50,9 @@ test("supports timeline seeking and a narrow layout", async ({ page }) => {
   await page.getByRole("button", { name: "Start of day", exact: true }).click();
   await expect(page.locator("output")).toHaveText("00:00");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole("combobox", { name: "Scene view" }).selectOption("cargo");
-  await page.getByRole("button", { name: "Inspect berth", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "The cargo berth" })).toBeVisible();
-  await page.getByRole("button", { name: "Close berth details", exact: true }).click();
-});
-
-test("selecting the cargo berth pauses replay and preserves time during camera and lighting changes", async ({ page }) => {
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  await page.getByRole("combobox", { name: "Scene view" }).selectOption("cargo");
-  await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
-  const canvas = page.locator("canvas");
-  const bounds = await canvas.boundingBox();
-  expect(bounds).not.toBeNull();
-  await canvas.click({ position: { x: bounds!.width / 2, y: bounds!.height / 2 } });
-  await expect(page.getByRole("heading", { name: "The cargo berth" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
-  const time = await page.locator("output").textContent();
-  await page.getByRole("button", { name: "Night", exact: true }).click();
-  await page.getByRole("button", { name: "World view", exact: true }).click();
-  await expect(page.locator("output")).toHaveText(time!);
-  await page.getByRole("button", { name: "Close berth details", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Scene view" }).selectOption("ridge");
+  await page.getByRole("button", { name: "Inspect heart rate", exact: true }).click();
+  await expect(page.getByRole("complementary")).toBeVisible();
 });
 
 test("water freezes while paused and seeking restores the same surface", async ({ page }) => {

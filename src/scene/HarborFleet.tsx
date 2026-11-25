@@ -5,7 +5,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {Group,InstancedMesh,Object3D,Vector3} from "three";
 import type { Replay } from "../core/replay.ts";
 
-import {berths,cargoQuay,swellAmplitude,vesselLengths,vesselBeams} from "./city/harbor-plan.ts";
+import {berths,marketQuay,swellAmplitude,vesselLengths,vesselBeams} from "./city/harbor-plan.ts";
 export {berths};
 const up=new Vector3(0,1,0);
 function useFleetModel(name: string) {
@@ -24,13 +24,13 @@ function BerthedShip({ berth, replay }: { berth: typeof berths[number]; replay: 
   const ropes=useRef<InstancedMesh>(null);
   const rig=useMemo(()=>{
     const {name,x,z}=berth,length=vesselLengths[name]!,width=vesselBeams[name]!;
-    const cargo=name==="Freighter",marina=z>50;
-    const pierZ=marina?60:name==="WaterTaxi"?43.5:name==="Tug"?43.5:z-4.05;
-    const deck=cargo?3.55:name==="Tug"?1.98:name==="Trawler"?1.82:1.08;
+    const quayside=name==="FishingBoat" || name==="CrabBoat",marina=z>50;
+    const pierZ=marina?60:name==="WaterTaxi"?43.5:z-4.05;
+    const deck=quayside?1.05:name==="Trawler"?1.82:1.08;
     const lines=[-1,1].map(sign=>{
       const local=marina?new Vector3(length*.44,deck,sign*width*.30):
-        new Vector3(sign*length*.37,deck,cargo?width*.40:Math.sign(pierZ-z)*width*.42);
-      const anchor=cargo?new Vector3(cargoQuay.edge-.65,cargoQuay.top+.35,sign<0?-78:-14):
+        new Vector3(sign*length*.37,deck,quayside?width*.40:Math.sign(pierZ-z)*width*.42);
+      const anchor=quayside?new Vector3(marketQuay.edge-.65,marketQuay.top+.35,z+sign*length*.44):
         marina?new Vector3(x+sign*2.2,.68,60+Math.sign(z-60)*.48):
         new Vector3(sign<0?-2.6:7.6,.68,pierZ+Math.sign(z-pierZ)*.5);
       return {local,anchor};

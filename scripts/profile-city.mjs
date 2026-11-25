@@ -15,6 +15,11 @@ try {
     plugins: [{
       name: "city-profile", enforce: "pre",
       transform(source, id) {
+        // Enable the night fixture only in this temporary production client.
+        if (id.endsWith("/frontend/App.tsx")) return source.replace(
+          'import.meta.env.DEV&&new URLSearchParams(location.search).get("lighting")==="night"',
+          'new URLSearchParams(location.search).get("lighting")==="night"'
+        );
         if (id.endsWith("/BoatScene.tsx")) return source + `
           import { _roots } from "@react-three/fiber";
           import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
@@ -41,28 +46,48 @@ try {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", msg => { if (msg.type() === "error") errors.push(msg.text()); });
-  await page.goto(host);
-  await page.getByRole("combobox", {name:"Speed", exact:true}).selectOption("1");
-  console.log(JSON.stringify({ chip: cpus()[0].model, memoryGiB: totalmem()/2**30, chrome: browser.version() }));
-  const cases = [11,12,13,14,15].flatMap(day => ["Day", "Night"].map(light => ({day, view:"world", light})));
-  for (const view of ["harbor", "walk", "skyline"]) cases.push({day:11, view, light:"Day"});
-  cases.push({day:11, view:"world", light:"Day", ao:true});
-  for (const item of cases) {
-    await page.getByLabel("Replay date").selectOption("2026-11-" + item.day);
-    await page.getByLabel("Scene view").selectOption(item.view);
-    await page.getByRole("slider", {name:"Replay time", exact:true}).fill("43200");
-    await page.getByRole("button", {name:item.light, exact:true}).click();
-    await page.getByRole("button", {name:"Play", exact:true}).click();
-    const metrics = await page.evaluate(sampleFrames, item);
-    await page.getByRole("button", {name:"Pause", exact:true}).click();
-    console.log(JSON.stringify({...item, ...metrics}));
-    if (process.argv.includes("--capture") && item.day === 11 && item.view === "world" && !item.ao) {
-      await page.getByRole("slider", {name:"Replay time", exact:true}).fill("43200");
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      const clip = await page.locator("canvas").boundingBox();
-      await page.screenshot({clip, style:".world > :not(.scene-canvas){visibility:hidden!important}",
-        path:"design/visual-studies/city-v2/world-performance-" + item.light.toLowerCase() + ".png"});
+  console.log(JSON.stringify({chip:cpus()[0].model,memoryGiB:totalmem()/2**30,chrome:browser.version()}));
+  for (const light of process.argv.includes("--glass-only")?[]:["Day","Night"]) {
+    await page.goto(host+(light==="Night"?"/?lighting=night":"/"));
+    await page.locator(light==="Night"?".glass-night":".glass-shell:not(.glass-night)").waitFor();
+    for (const day of [11,12,13,14,15]) {
+      await page.getByRole("button",{name:/Choose replay date/}).click();
+      await page.getByLabel("Replay date",{exact:true}).selectOption("2026-11-"+day);
+      await page.locator("[data-chip=world]").click();
+      const clock=page.getByRole("slider",{name:"Replay time",exact:true});
+      await clock.fill("43200");
+      const play=page.getByRole("button",{name:"Play",exact:true});
+      await play.click();
+      const item={day,view:"world",light};
+      const metrics=await page.evaluate(sampleFrames,item);
+      await page.getByRole("button",{name:"Pause",exact:true}).click();
+      console.log(JSON.stringify({...item,...metrics}));
+      if(process.argv.includes("--capture")&&day===11){
+        await clock.fill("43200");
+        await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+        await page.locator("canvas").screenshot({style:".glass-shell > :not(.scene-canvas){visibility:hidden!important}",path:"design/visual-studies/city-v2/world-performance-"+light.toLowerCase()+".png"});
+      }
     }
+    if(light==="Day"){
+      await page.getByRole("button",{name:/Choose replay date/}).click();
+      await page.getByLabel("Replay date",{exact:true}).selectOption("2026-11-11");
+      await page.getByRole("slider",{name:"Replay time",exact:true}).fill("43200");
+      for(const view of ["steps","hrv","rhr","world"]){
+        await page.locator('[data-chip="'+view+'"]').click();
+        await page.waitForTimeout(1900);
+        const item={light,view,day:11,ao:view==="world"&&process.argv.includes("--ao")};
+        console.log(JSON.stringify({...item,...await page.evaluate(sampleFrames,item)}));
+      }
+    }
+  }
+  if(process.argv.includes("--glass-only")){
+    await page.goto(host);
+    await page.getByRole("button",{name:/Choose replay date/}).click();
+    await page.getByLabel("Replay date",{exact:true}).selectOption("2026-11-11");
+    await page.getByRole("slider",{name:"Replay time"}).fill("43200");
+    await page.locator('[aria-label="Play"]:enabled').waitFor();
+    await page.waitForFunction(()=>!!window.cityProfile().scene.getObjectByName("Ridge saddle reservoir"));
+    await measureGlass(page);
   }
   if (errors.length) throw Error(errors.join("\n"));
 } finally {
@@ -140,5 +165,73 @@ async function sampleFrames({ light, ao }) {
     if (query) ctx.deleteQuery(query);
     pass?.dispose();
     target?.dispose();
+  }
+}
+
+async function measureGlass(page) {
+  const session = await page.context().newCDPSession(page);
+  for (const view of ["world", "rhr"]) {
+    await page.locator('[data-chip="'+view+'"]').click();
+    await page.waitForTimeout(1900);
+    for (const mode of ["hidden","opaque","glass","glass","opaque","hidden"]) {
+      const enabled=mode==="glass";
+      const override = enabled ? null : await page.addStyleTag({
+        content: mode==="hidden" ? ".glass-shell > :not(.scene-canvas){visibility:hidden!important}" : ".glass-shell .glass{backdrop-filter:none!important}",
+      });
+      const surfaces = await page.evaluate(async () => {
+        for (let i=0; i<55; i++) await new Promise(requestAnimationFrame);
+        return [...document.querySelectorAll(".glass-shell .glass")]
+          .filter(el => el.checkVisibility({visibilityProperty:true}) && getComputedStyle(el).backdropFilter !== "none").length;
+      });
+      if (surfaces !== (enabled ? view==="world" ? 4 : 5 : 0)) throw Error("Unexpected glass surface count.");
+      const events = [];
+      const collect = ({value}) => events.push(...value);
+      session.on("Tracing.dataCollected", collect);
+      await session.send("Tracing.start", {
+        categories:"benchmark,viz,gpu,disabled-by-default-gpu.device,disabled-by-default-viz.gpu_composite_time",
+        options:"record-as-much-as-possible",
+      });
+      const intervals = await page.evaluate(async () => {
+        const times=[];
+        let previous=await new Promise(requestAnimationFrame);
+        for (let i=0; i<110; i++) {
+          const next=await new Promise(requestAnimationFrame);
+          times.push(next-previous);
+          previous=next;
+        }
+        return times;
+      });
+      const complete = new Promise(resolve=>session.once("Tracing.tracingComplete",resolve));
+      await session.send("Tracing.end");
+      await complete;
+      session.off("Tracing.dataCollected",collect);
+      const median = values=>values.sort((a,b)=>a-b)[Math.floor(values.length/2)];
+      const duration = name=>{
+        const samples=events.filter(e=>e.name===name && e.dur).map(e=>e.dur/1000);
+        if (samples.length<55) throw Error("Insufficient compositor samples for "+name);
+        return median(samples);
+      };
+      console.log(JSON.stringify({view,mode,surfaces,frameMs:median(intervals),
+        drawSwapMs:duration("Display::DrawAndSwap"),gpuThreadSwapMs:duration("SkiaOutputSurfaceImplOnGpu::SwapBuffers"),
+        deviceIntervals:events.filter(e=>e.cat?.includes("gpu.device") && e.dur).length}));
+      if (override) await override.evaluate(el=>el.remove());
+    }
+  }
+  await session.detach();
+  for (const view of ["hrv","rhr","steps","world"]) {
+    const intervals=await page.evaluate(async target=>{
+      document.querySelector('[data-chip="'+target+'"]').click();
+      const times=[];
+      const start=performance.now();
+      let previous=start;
+      while(previous-start<2000){
+        const next=await new Promise(requestAnimationFrame);
+        if(next>previous)times.push(next-previous);
+        previous=next;
+      }
+      return times.sort((a,b)=>a-b);
+    },view);
+    console.log(JSON.stringify({flight:view,frames:intervals.length,medianMs:intervals[Math.floor(intervals.length*.5)],
+      p95Ms:intervals[Math.floor(intervals.length*.95)],maxMs:intervals.at(-1)}));
   }
 }

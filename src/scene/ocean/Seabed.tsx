@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef } from "react";
-import { BufferGeometry, Color, Float32BufferAttribute, Group, MeshStandardMaterial } from "three";
-import { useFrame } from "@react-three/fiber";
+import { useEffect, useMemo } from "react";
+import { BufferGeometry, Color, Float32BufferAttribute, MeshStandardMaterial } from "three";
 import { useOcean } from "./OceanEnvironment.tsx";
 import { SEABED_LAYER, WATER_LEVEL } from "./layers.ts";
 import { patchSand } from "./sand-material.ts";
@@ -79,14 +78,7 @@ export function seabedGeometry(bed: SeabedData, patchReef=false) {
 
 export function Seabed() {
   const ocean = useOcean();
-  return <><Floor data={ocean.bed}/>{ocean.outerBed && <Floor data={ocean.outerBed}/>}{ocean.islandBed && <DestinationFloor data={ocean.islandBed}/>}</>;
-}
-
-function DestinationFloor({data}:{data:SeabedData}) {
-  const {uniforms}=useOcean();
-  const group=useRef<Group>(null);
-  useFrame(()=>{if(group.current)group.current.visible=uniforms.uIslandReveal.value>0;});
-  return <group name="Destination seabed" ref={group} visible={false}><Floor data={data}/></group>;
+  return <><Floor data={ocean.bed}/>{ocean.outerBed && <Floor data={ocean.outerBed}/>}{ocean.islandBed && <group name="Destination seabed"><Floor data={ocean.islandBed}/></group>}</>;
 }
 
 function Floor({data}:{data:SeabedData}) {

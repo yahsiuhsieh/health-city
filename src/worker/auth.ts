@@ -1,3 +1,7 @@
+import {Temporal} from "@js-temporal/polyfill";
+import {WEEK_SUMMARY_PATH,summaryDates,summarizeReplay} from "../core/week-summary.ts";
+import {historyReplay} from "./metric-history.ts";
+import {elapsedSeconds,sleepInstant} from "../core/sleep-replay.ts";
 import { readHeartSnapshot,saveHeartSnapshot } from "./heart-snapshot.ts";
 import { respond, respondJson } from "./http.ts";
 import { RECORDED_REPLAY_PATH } from "../core/recorded-replay.ts";
@@ -107,16 +111,16 @@ const routes = new Map([
   ["/auth/logout", "POST"], ["/api/session/activity", "POST"],
   ["/settings/disconnect", "GET"], ["/auth/disconnect", "POST"],
   ["/checks/health", "GET"], ["/checks/health/run", "POST"],
-  [DAILY_HRV_PATH, "POST"], [RECORDED_REPLAY_PATH, "POST"],
+  [DAILY_HRV_PATH, "POST"], [RECORDED_REPLAY_PATH, "POST"], [WEEK_SUMMARY_PATH,"POST"],
 ]);
 
 export function createAuthHandler(google = createGoogleClient(), clock: () => number = Date.now, health = createGoogleHealthClient()) {
-  return async (request: Request, env: Env): Promise<Response> => {
+  return async (request: Request, env: Env, waitUntil?:(work:Promise<void>)=>void): Promise<Response> => {
     const url = new URL(request.url);
     const method = routes.get(url.pathname);
     if (!method) return respond("Not found.", 404);
     if (request.method !== method) return respond("Method not allowed.", 405, { Allow: method });
-    const replayRoute = url.pathname === DAILY_HRV_PATH || url.pathname === RECORDED_REPLAY_PATH;
+    const replayRoute = url.pathname === WEEK_SUMMARY_PATH || url.pathname === DAILY_HRV_PATH || url.pathname === RECORDED_REPLAY_PATH;
     if (replayRoute && env.GOOGLE_HRV_REPLAY_ENABLED !== "true") {
       return respondJson({ error: "replay_disabled" }, 503);
     }
@@ -146,6 +150,33 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
       const window = dates.length === 1 && zones.length === 1 ? dayWindow(dates[0]!, zones[0]!) : null;
       if (!window || Date.parse(window.end) > now) return respondJson({ error: "invalid_date" }, 400);
       const connection = await store.connection();
+      if(connection && (url.pathname===WEEK_SUMMARY_PATH || url.pathname===RECORDED_REPLAY_PATH)){
+        if(!await store.activity(sessionHash,clock()))return respondJson({error:"sign_in_required"},401);
+        const dates=url.pathname===WEEK_SUMMARY_PATH?summaryDates(window.date):[window.date];
+        const windows=dates.map(date=>dayWindow(date,window.timeZone)!);
+        let token:Promise<string>|undefined;
+        let authorizationFailed=false;
+        const access=async()=>{
+          if(!usableConnection(connection,now))throw new Error("Authorization required.");
+          const refreshToken=await decryptRefreshToken(connection.refresh_ciphertext,config.encryptionKey,connection.google_sub,config.clientId);
+          return google.refresh(refreshToken,config);
+        };
+        try{
+          const days=await historyReplay(config.db,connection.google_sub,windows,now,form.get("refresh")==="1",
+            async(key,targets)=>health.readMetricRange(key,targets,await (token??=access().catch(e=>{authorizationFailed=true;throw e;})),active),active,waitUntil);
+          if(!await active())return respondJson({error:"sign_in_required"},401);
+          if(authorizationFailed && days.every(d=>[d.hrv,d.rhr,d.heartRate,d.sleep,d.steps,d.calories].every(s=>s.status==="failed")))
+            return usableConnection(connection,now)?respondJson({error:"authorization_failed"},503):respondJson({error:"authorization_required"},409);
+          if(url.pathname===WEEK_SUMMARY_PATH)return respondJson({date:window.date,timeZone:window.timeZone,days:days.map(summarizeReplay)});
+          const day=days[0]!;
+          if(day.sleep.status==="ready")day.sleep.value=day.sleep.value.filter(s=>
+            sleepInstant(s,elapsedSeconds(s)).epochNanoseconds>Temporal.Instant.from(window.start).epochNanoseconds);
+          return respondJson(day);
+        }catch(error){
+          // Older local databases can still serve a single day before migration 0005.
+          if(url.pathname===WEEK_SUMMARY_PATH || !String(error).includes("no such table"))throw error;
+        }
+      }
       const cached = async () => {
         if (!connection) return null;
         return readHeartSnapshot(config.db,connection.google_sub,window).catch(()=>null);
@@ -155,7 +186,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
         const means = await cached();
         if (!means || !await active()) return null;
         const failed = {status:"failed"};
-        return respondJson({date:window.date,timeZone:window.timeZone,hrv:failed,steps:failed,calories:failed,sleep:failed,
+        return respondJson({date:window.date,timeZone:window.timeZone,rhr:failed,hrv:failed,steps:failed,calories:failed,sleep:failed,
           cachedHeartRate:true,heartRate:{status:"ready",value:means}});
       };
       if (!usableConnection(connection, now)) return await fallback() ?? respondJson({ error: "authorization_required" }, 409);
@@ -168,12 +199,13 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
         return await fallback() ?? respondJson({ error: "authorization_failed" }, 503);
       }
       if (url.pathname === RECORDED_REPLAY_PATH) {
-        const [hrv, calories, steps, heart, sleep] = await Promise.allSettled([
+        const [hrv, calories, steps, heart, sleep, rhr] = await Promise.allSettled([
           health.readDailyHrv(accessToken, window, active),
           health.readReplayActivity("total-calories", accessToken, window, active),
           health.readReplayActivity("steps", accessToken, window, active),
           health.readReplayActivity("heart-rate", accessToken, window, active),
           health.readReplaySleep(accessToken, window, active),
+          health.readDailyRhr(accessToken, window, active),
         ]);
         if (!await active()) return respondJson({ error: "sign_in_required" }, 401);
         const stream = <T>(result: PromiseSettledResult<T>): ReplayStream<T> =>
@@ -192,7 +224,7 @@ export function createAuthHandler(google = createGoogleClient(), clock: () => nu
           if (means) { heartRate={status:"ready",value:means}; cachedHeartRate=true; }
         }
         const replay: RecordedReplay = {
-          date: window.date, timeZone: window.timeZone, heartRate, cachedHeartRate, hrv: stream(hrv), calories: stream(calories), steps: stream(steps), sleep: stream(sleep),
+          date: window.date, timeZone: window.timeZone, heartRate, cachedHeartRate, rhr: stream(rhr), hrv: stream(hrv), calories: stream(calories), steps: stream(steps), sleep: stream(sleep),
         };
         if (!await active()) return respondJson({error:"sign_in_required"},401);
         return respondJson(replay);

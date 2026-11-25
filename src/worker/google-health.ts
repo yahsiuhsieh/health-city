@@ -1,4 +1,7 @@
-import { dailyHrvRmssd, inspectRecords, object } from "./health-data.ts";
+import { Temporal } from "@js-temporal/polyfill";
+import {emptyDay,rangeOf,type Metric} from "./metric-history.ts";
+import {elapsedSeconds,sleepInstant} from "../core/sleep-replay.ts";
+import { dailyRhrRecord, dailyHrvRmssd, inspectRecords, object } from "./health-data.ts";
 import type { DayWindow, InspectionData } from "./health-data.ts";
 import { replaySleep } from "./replay-sleep.ts";
 import { replayTotals } from "./replay-activity.ts";
@@ -92,12 +95,13 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
     return { points, nextPageToken };
   }
 
-  async function replayPoints(kind: ActivityStream | "sleep", accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
+  async function replayPoints(kind: ActivityStream | "sleep" | "daily-resting-heart-rate" | "daily-heart-rate-variability", accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
     const stream = streams.find(item => item.key === kind)!;
     const points: unknown[] = [];
     const seen = new Set<string>();
     let token = "";
-    for (let page = 0; page < 5; page++) {
+    const pageLimit = kind.startsWith("daily-") ? 3 : 5;
+    for (let page = 0; page < pageLimit; page++) {
       if (!await active()) throw new HealthCheckError("Sign-in required.", true);
       const { points: records, nextPageToken } = await readPage(stream, window, accessToken, token, 5_000);
       points.push(...records);
@@ -110,6 +114,48 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
   }
 
   return {
+    async readMetricRange(key:Metric,windows:DayWindow[],token:string,active:()=>Promise<boolean>){
+      const range=rangeOf(windows);
+      const kinds={rhr:"daily-resting-heart-rate",hrv:"daily-heart-rate-variability",heartRate:"heart-rate",calories:"total-calories",steps:"steps",sleep:"sleep"} as const;
+      const records=await replayPoints(kinds[key],token,range,active);
+      const days=windows.map(emptyDay);
+      if(key==="hrv" || key==="rhr"){
+        const groups=new Map<string,unknown[]>();
+        for(const point of records){
+          const daily=object(object(point)[key==="hrv"?"dailyHeartRateVariability":"dailyRestingHeartRate"]);
+          const raw=object(daily.date);
+          const date=Temporal.PlainDate.from({year:Number(raw.year),month:Number(raw.month),day:Number(raw.day)},{overflow:"reject"}).toString();
+          if(date<range.date || date>=range.nextDate)throw new HealthCheckError("Unexpected daily record date.");
+          const group=groups.get(date)??[];
+          group.push(point);groups.set(date,group);
+        }
+        for(const day of days){
+          const group=groups.get(day.date)??[];
+          if(key==="rhr")day.rhr={status:"ready",value:group.map(p=>dailyRhrRecord(p,day.date))};
+          else {
+            if(group.length>1)throw new HealthCheckError("Google Health returned more than one daily HRV record.");
+            const value=group.length?dailyHrvRmssd(group[0],day.date):null;
+            if(deriveHrvSkyline(value).status==="invalid")throw new HealthCheckError("Invalid daily HRV value.");
+            day.hrv={status:"ready",value};
+          }
+        }
+      }else if(key==="sleep"){
+        const sessions=replaySleep(records,{...range,start:Temporal.Instant.from(range.start).subtract({nanoseconds:1}).toString()});
+        for(const [i,day] of days.entries()){
+          const w=windows[i]!;
+          day.sleep={status:"ready",value:sessions.filter(s=>
+            Temporal.Instant.compare(s.startTime,w.end)<0 && Temporal.Instant.compare(sleepInstant(s,elapsedSeconds(s)),w.start)>=0)};
+        }
+      }else{
+        const kind=key==="heartRate"?"heart-rate":key==="calories"?"total-calories":"steps";
+        const totals=replayTotals(kind,records,range);
+        for(const [i,day] of days.entries()){
+          const w=windows[i]!,offset=(Date.parse(w.start)-Date.parse(range.start))/300000,count=(Date.parse(w.end)-Date.parse(w.start))/300000;
+          day[key]={status:"ready",value:totals.slice(offset,offset+count)};
+        }
+      }
+      return days;
+    },
     async readDailyHrv(accessToken: string, window: DayWindow, active: () => Promise<boolean>): Promise<number | null> {
       let token = "";
       let record: number | null | undefined;
@@ -131,6 +177,10 @@ export function createGoogleHealthClient(fetcher: typeof fetch = fetch) {
     },
     async readReplayActivity(kind: ActivityStream, accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
       return replayTotals(kind, await replayPoints(kind, accessToken, window, active), window);
+    },
+    async readDailyRhr(accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
+      const points = await replayPoints("daily-resting-heart-rate", accessToken, window, active);
+      return points.map(point => dailyRhrRecord(point, window.date));
     },
     async readReplaySleep(accessToken: string, window: DayWindow, active: () => Promise<boolean>) {
       return replaySleep(await replayPoints("sleep", accessToken, window, active), window);

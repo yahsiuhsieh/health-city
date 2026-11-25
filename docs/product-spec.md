@@ -30,10 +30,14 @@ Google Health API responses are the authoritative product data. App and Takeout 
 ## Exploration and inspection
 
 - Use an elevated oblique view with free rotation, pan, and neighborhood-scale zoom. Exact camera limits remain open.
-- Provide a `World view` button that restores the overview camera. It must preserve date, time, and playback state.
-- Exclude train and boat follow modes from the current scope.
-- Clicking a data object pauses a playing world and opens a compact record/explanation card. Preserve date, replay time, and camera.
-- Closing-card and resume behavior remain open.
+- Use a full-screen scene with floating controls. The dock contains World, Sleep, Heart, HRV, RHR, Steps, and Energy.
+- The World chip restores the overview and preserves the date, time, and playback state.
+- Give each metric one focus view. Selecting a metric or its scene object opens its card and animates the camera.
+- Object inspection pauses playback and preserves the replay time. Sleep focus follows the boat during a voyage.
+- Closing a card preserves the camera pose. Escape returns keyboard focus to the chip.
+- Each card shows the selected date and the seven previous civil dates. Compute the mean from available earlier values only.
+- State how many earlier dates contribute. Show a neutral comparison when at least three earlier dates have values.
+- Give intraday cards Today and 7 days tabs. Daily metrics have one history chart.
 
 ## Sign-in lifetime
 
@@ -48,7 +52,7 @@ Google Health API responses are the authoritative product data. App and Takeout 
 
 - On opening, select the most recent ended calendar date with available records. An ended date is not necessarily complete.
 - Preserve missing-data indications. Exact default-date eligibility and the no-data fallback remain open.
-- Enter a selected date paused at 00:00. Wait for an explicit Play action.
+- Load the date automatically after a date change. Keep Refresh in settings. Enter a selected date paused at 00:00. Wait for an explicit Play action.
 - Show a timeline from local midnight to the next midnight, labeled 00:00–24:00.
 - For today, retain the full-day axis. Restrict seeking and playback to elapsed time.
 - Mark future segments separately from synchronization lag and missing records in elapsed time. Do not predict future health-derived states.
@@ -63,7 +67,7 @@ Google Health API responses are the authoritative product data. App and Takeout 
 
 ### Playback and state restoration
 
-- Allow direct seeking and shortcuts, including the completed-day state.
+- Use the scrubber for direct seeking. Home seeks to the start. End seeks to the latest available replay time.
 - Default to 240x elapsed-time playback. A standard 24-hour day takes six minutes.
 - Preserve that rate across clock changes. Allow speed adjustment.
 - Exact speed presets remain open. Review the default with actual scenes.
@@ -104,6 +108,9 @@ Google Health API responses are the authoritative product data. App and Takeout 
 - During testing, use D1 Free and persist only data needed by accepted features, authorization, synchronization, or essential validation.
 - Apply this rule to every data type, not only heart rate.
 - Define the purpose, resolution, and retention of each stored field before implementation.
+- Round fractional measurements to two decimal places before storage and replay calculations.
+- Round derived measurements to two decimal places before subsequent calculations. Round halfway values away from zero.
+- Keep counts as integers. Preserve exact timestamps and interval boundaries.
 - Do not preserve extra fields, unused streams, or complete vendor responses for hypothetical future features.
 - Add storage for new needs when those needs become concrete. Earlier aggregates may not support future detailed analysis.
 - Measure storage and read/write usage with a small representative dataset before expanding synchronization.
@@ -138,7 +145,7 @@ Google Health API responses are the authoritative product data. App and Takeout 
 - Do not discard high or low physiological values solely because they are unusual. Numerical flagging criteria still require data checks.
 - Do not force malformed records into numerical geometry. Keep unrelated valid streams usable.
 - If a value or count exceeds scene capacity, explicitly indicate the exceeded display range.
-- Preserve the precise value and full total on inspection.
+- Show the measurement at its stored precision. Show the full total on inspection.
 - Do not silently truncate values, normalize dates independently, delete records, or expand world space without bounds.
 - Determine capacities through measurement. Overflow indicates a display limit, not physiological abnormality.
 
@@ -202,8 +209,8 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 ## Daily HRV skyline
 
 - Use the selected date's daily HRV summary to determine ordinary high-rise count. Keep the count fixed during that day's replay.
-- Calculate count as `floor(daily HRV RMSSD in milliseconds / 5)`. Use the same raw-value conversion across dates.
-- Preserve precise HRV on inspection. Values within a five-millisecond bin share a count.
+- Round the daily HRV RMSSD in milliseconds to two decimal places before calculating the count.
+- Divide the rounded value by five and round down to a whole number. Show the same HRV value on inspection.
 - High-rise height and architectural appearance must not encode additional metrics.
 - Keep building forms consistent at the same plots across dates. Do not randomly rearrange heights or silhouettes.
 - Exact art direction and plot-occupancy order remain open.
@@ -220,10 +227,14 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 
 - Include daily RHR in the first release, using a fixed dam and inland reservoir.
 - Reservoir water level represents daily RHR and remains fixed during the selected day's replay.
-- Higher raw values produce higher water levels on a shared scale across dates. Exact conversion remains open.
+- Use a 40–80 bpm gauge. Water stands 4 m above the toe at 40 bpm and rises 0.4 m per bpm.
+- Limit the displayed level to 4–20 m. Show the exact value and `Outside the gauge range` for values beyond either limit.
 - Keep the basin separate from the sleep ocean and weather encoding.
 - Water level represents physiology, not rainfall, actual city water supply, or a health grade.
-- Dam form, location, capacity, missing-value appearance, and auxiliary motion remain open.
+- Place a curved concrete gravity dam in a fixed north-west valley beyond the ridge. Select the site after the two-site visual study.
+- The crest stands 22 m above the toe. Keep the spillway gates closed. Pause freezes the constant outlet release.
+- While loading, after a read failure, or without an agreed value, show a grey basin, capacity envelope, and shuttered gauge.
+- Distinguish loading and read failures in the card. Prefer `WITH_SLEEP` for each date. Use `ONLY_WITH_AWAKE_DATA` when no sleep-based estimate exists. Apply this selection before computing the seven-day average. Show an unavailable value if the selected records disagree.
 - Missing RHR must not become zero or an invented value from another date.
 - Distinguish daily RHR from intraday heart-rate samples and HRV. Do not infer instantaneous resting heart rate, stress, or an overall health grade.
 - Check the API's daily date and calculation-method metadata before selecting a canonical value. App comparison is optional.
@@ -235,7 +246,7 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 - Use one heart-rate-to-elevation mapping across dates, relative to a fixed baseline. Equal means produce equal heights.
 - Do not normalize each date's minimum and maximum independently. Exact baseline, vertical scale, and exceptional-value handling remain open.
 - Preserve source chronology and meaningful events. Rounded geometry must not introduce invented peaks.
-- Persist five-minute means with their API precision, interval boundaries, and necessary coverage and source information.
+- Persist five-minute means to two decimal places. Keep interval boundaries and necessary coverage and source information.
 - Inspection shows the interval mean and data status, not an original-sample heart-rate curve.
 - Use Google Health five-minute rollups for average heart rate. Prefer API-provided averages for other metrics when available.
 - Use a mountain sightseeing train near the upper ridge to indicate replay time. Avoid roller-coaster-like motion through sharp changes.
@@ -257,14 +268,17 @@ Venue interiors, per-session buildings, category venues, and a separate collecti
 - Do not force departure or arrival at the date boundary. Preserve complete start and end dates in the session overview.
 - Make land area proportional to recorded time asleep, excluding awake intervals. Use a common scale across dates and sessions.
 - Doubling asleep duration doubles area, not diameter.
-- Show elapsed start-to-end duration separately. Use 24 m² of land per asleep minute across all session sizes. Apply no minimum or maximum island area.
+- Show elapsed start-to-end duration separately. Use 10 m² of land per asleep minute across all session sizes. Apply no minimum or maximum island area.
+- Use a reef platform area of 2.5 times the land area, with a 2,500 m² minimum.
+- For the history chart, assign all asleep time to the session end date in the replay zone. Include naps.
 - Form a natural coral cay on a reef platform. Count only land above the mean waterline. A jetty crosses the reef flat from the beach to the reef edge.
 - Use one fixed outbound route for every session. It leaves the working berth, passes the harbor mouth, and goes through the marked passage north of the fixed outer reef. Five submerged reef crests rise from a shared shelf. Shallower sandy gaps and a deeper channel separate them.
-- The measured route is 911.14 m against a target of 900 ± 25 m. The boat passes the harbor mouth at 20.50 m. It rounds the east end of the island platform and heads west for the final 120 m. It slides 1 m to starboard at the jetty on the south side of the island.
+- Target an outbound route of 400 ± 20 m. Round the platform on the east and finish with a 1 m starboard slide.
+- The compact outbound route measures 401.31 m. The boat passes the harbor mouth at 22.50 m.
 - On a day with a sleep island, the world overview includes the city, harbor, outer reef, and island.
 - Show the selected session in the Sleep voyage card. Count sleep time and stage durations through the replay position.
 - The card shows time asleep, stage proportions, a four-row timeline, and a route map. The voyage view shows stage detail. Stage effects appear only during the corresponding stage.
-- Reveal the whole island through thinning mist during the final 60 m of approach. Clear the mist near the jetty first. Complete the reveal at the final session end.
+- Reveal the whole island through thinning mist during the final 60 m of approach. Keep the mist close to the island shoreline and keep the boat visible throughout its approach. Clear the mist near the jetty first. Complete the reveal at the final session end.
 - A temporary awakening adds no land and does not trigger arrival. Sleep stages do not change the geography or the sea state.
 - Show islands relevant to the selected day, including naps and sessions across midnight.
 - Historical dates provide access to older islands. Do not accumulate them permanently in the bay.
@@ -338,7 +352,7 @@ The user accepts these eight representations:
 
 Include the accepted synchronization, date selection, inspection, replay, missing-data states, free private hosting, and free-camera controls needed to use these representations.
 
-Defer new physiological metrics and landmarks, multi-user registration, sharing, and follow-camera modes. Scope agreement does not establish successful account access, final art quality, or calibrated numerical scales.
+Defer new physiological metrics and landmarks, multi-user registration, sharing, and additional follow-camera modes. Scope agreement does not establish successful account access, final art quality, or calibrated numerical scales.
 
 ## Acceptance criteria
 

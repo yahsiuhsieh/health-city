@@ -4,7 +4,8 @@ import type { Point } from "../loop-path.ts";
 
 const [mx,mz]=HARBOR_MOUTH.point;
 const axis=-.64;
-const center:Point=[mx+201,mz+137];
+export const outerReefScale=.22;
+const center:Point=[mx+11,mz+37];
 
 function place([x,z]:Point,angle:number,origin:Point):Point {
   const c=Math.cos(angle),s=Math.sin(angle);
@@ -17,7 +18,9 @@ function boundsOf(points:Point[]) {
 }
 
 function reefPatch(offset:Point,length:number,width:number,turn:number,bend:number,seed:number) {
-  const centerPoint=place(offset,axis,center);
+  const scale=outerReefScale;
+  length*=scale;width*=scale;bend*=scale;
+  const centerPoint=place([offset[0]*scale,offset[1]*scale],axis,center);
   const base=reefPlatform(Math.PI*length*width/4,width/length,seed,[0,0]);
   const polygon=base.polygon.filter((_,i)=>i%3===0).map(([x,z])=>{
     const tip=z/(length/2);
@@ -56,13 +59,13 @@ export const outerReef={
   center,patches,vertices,bounds:boundsOf(vertices),
   shelfDepth(x:number,z:number){
     const dx=x-center[0],dz=z-center[1];
-    const across=Math.cos(axis)*dx-Math.sin(axis)*dz,along=Math.sin(axis)*dx+Math.cos(axis)*dz;
+    const across=(Math.cos(axis)*dx-Math.sin(axis)*dz)/outerReefScale,along=(Math.sin(axis)*dx+Math.cos(axis)*dz)/outerReefScale;
     const bars=noise(x*.052+4,z*.052),grain=noise(x*.16,z*.16+2);
     const spine=9*Math.sin(along*.052)+10*(bars-.5);
     const rim=Math.hypot((across-spine)/37,along/124);
     // A sand shelf links the crests. The deeper cut crosses it obliquely.
     const channel=(along+.65*across+24+12*(bars-.5))/13;
-    return 3.3+4.8*bars+1.8*grain+5.7*Math.exp(-channel*channel)
+    return 2.1+2.6*bars+1.1*grain+10*Math.exp(-channel*channel)
       +34*Math.max(0,rim-.67)**1.65;
   },
   distance(x:number,z:number){

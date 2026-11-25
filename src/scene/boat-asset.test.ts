@@ -40,7 +40,7 @@ it("keeps the permanent fleet and the deck-scale captain independently placeable
   const {scene} = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),"");
   const meshes: Mesh[] = [];
   scene.traverse(node => { if (node instanceof Mesh) meshes.push(node); });
-  expect(meshes.map(node=>node.name).sort()).toEqual(["Captain","Freighter","Motorboat","Schooner","Trawler","Tug","WaterTaxi"]);
+  expect(meshes.map(node=>node.name).sort()).toEqual(["Captain","CrabBoat","FishingBoat","Motorboat","Schooner","Trawler","WaterTaxi"]);
   for (const node of meshes) {
     expect(node).toBeInstanceOf(Mesh);
     const dimensions = new Box3().setFromObject(node).getSize(new Vector3());
@@ -52,7 +52,7 @@ it("keeps the permanent fleet and the deck-scale captain independently placeable
       expect(dimensions.x).toBeGreaterThan(dimensions.y);
       expect(dimensions.x).toBeCloseTo(vesselLengths[node.name]!);
       expect(dimensions.z).toBeCloseTo(vesselBeams[node.name]!);
-      expect((node.geometry.index?.count??node.geometry.attributes.position!.count)/3).toBeLessThan(node.name==="Freighter"?60000:15000);
+      expect((node.geometry.index?.count??node.geometry.attributes.position!.count)/3).toBeLessThan(15000);
     }
   }
 });

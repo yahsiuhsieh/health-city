@@ -7,7 +7,7 @@ import { TorusGeometry,BoxGeometry,BufferGeometry,CanvasTexture,Color,CylinderGe
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Point } from "./loop-path.ts";
 import { DOCK,PAVING_Y,workingLines } from "./harbor-layout.ts";
-import {armMarks,breakwaterArms,cargoQuay,workingQuay} from "./city/harbor-plan.ts";
+import {armMarks,breakwaterArms,marketQuay,workingQuay} from "./city/harbor-plan.ts";
 import { port } from "./port-layout.ts";
 import { harborWorks,harborEdge } from "./coastline.ts";
 type XYZ=[number,number,number];
@@ -50,7 +50,7 @@ function districtGeometry() {
   // Connect the boarding float to the recessed working apron.
   box(DOCK.x,.28,DOCK.z,DOCK.halfWidth*2,.36,DOCK.halfLength*2,"#b39b7b");
   box(-5.6,.41,-4.5,5.65,.15,1.58,"#af9879");
-  const {edge,start,end,top}=cargoQuay;
+  const {edge,start,end,top}=marketQuay;
   box(-9,top/2-2,(start+end)/2,2*(edge+9),top+4,end-start,pierConcrete);
   box(edge-.14,top+.045,(start+end)/2,.32,.09,end-start,"#c9c5b7");
   for(let z=start+3;z<end;z+=8){
@@ -61,7 +61,6 @@ function districtGeometry() {
     for(const dz of [-.24,.24])box(edge+.16,.31,z+dz,.07,2.8,.07,iron);
     for(let y=-.9;y<top;y+=.28)box(edge+.19,y,z,.07,.05,.54,iron);
   }
-  for(const dx of [-1.05,1.05])box(port.craneX+dx,top+.08,-36,.11,.16,26,"#697170");
   // Saw-cut apron slabs continue from the service entrance to the quay coping.
   function apron(left: number, right: number, near: number, far: number, y=PAVING_Y) {
     const shades = ["#aaa99b", "#b0afa0", "#b5b1a0", "#afad9d"];
@@ -80,7 +79,7 @@ function districtGeometry() {
   const run=4.8, rise=top-.6;
   add(unitBox,[-14.58-run/2,top-rise/2-.12,-47],[Math.hypot(run,rise),.24,6.4],pierConcrete,[0,0,Math.atan2(rise,run)]);
   apron(-14.4,-4.1,10,45.8);
-  for (const z of [13.5,23.5,33.5,43.5]) {
+  for (const z of [13.5,43.5]) {
     box(2,.29,z,12.5,.43,1.14,"#8b7963");
     for (let j=0;j<27;j++) box(-4+j*.46,.54,z,.44,.12,1.32,j%3 ? "#c3ac86":"#b79d78");
     for (const x of [-3.6,2.3,7.8]) {
@@ -89,9 +88,9 @@ function districtGeometry() {
     }
   }
   // The marina gangway leads to a single floating pontoon with finger piers.
-  box(7,.41,60,38,.37,1.2,"#ae987b");
-  for(let x=-9;x<26;x+=2.4)box(x,.605,60,.035,.02,1.16,"#86785f");
-  for(const x of [-2.5,5.5,13.5,21.5])for(const sign of [-1,1]){
+  box(1,.41,60,26,.37,1.2,"#ae987b");
+  for(let x=-9;x<14;x+=2.4)box(x,.605,60,.035,.02,1.16,"#86785f");
+  for(const x of [-2.5,5.5])for(const sign of [-1,1]){
     box(x,.40,60+sign*3.2,.7,.32,5.4,"#a99274");
     add(cylinder,[x,.38,60+sign*5.6],[.20,1.5,.20],iron);
   }
@@ -171,7 +170,7 @@ function districtGeometry() {
   box(-5.65,1.15,14.2,.46,1.05,.36,"#d3d2bc");
   for(let i=0;i<3;i++)ring(-6.8,.69+.065*i,14.1,.42,"#ac875b",[Math.PI/2,0,0]);
   box(-8.9,1.18,39.2,1.9,1.16,.83,"#517477");
-  for(const z of [13.5,23.5,33.5,43.5])for(const x of [0,4,7])
+  for(const z of [13.5,43.5])for(const x of [0,4,7])
     ring(x,.28,z+.66,.34,"#414e4d",[0,0,0]);
   for(const z of [-4.8,.8])ring(-3.38,.18,z,.38,"#404b49",[0,Math.PI/2,0]);
   ring(-5.8,1.65,-4,.34,"#c95b39",[0,Math.PI/2,0]);box(-5.8,1.1,-4,.09,1.4,.09,iron);
@@ -182,22 +181,24 @@ function districtGeometry() {
     box(-16.2,1.03,z,.21,.86,.21,"#c39b4e");
     box(-15.65,3.95,z,.28,.18,.46,trim,true);
   }
-  const freightColors = ["#ac5944","#385d72","#578a7d","#bc924d"];
-  for (let i=0;i<2;i++) for (let j=0;j<2;j++) for (let k=0;k<(i===0?3:1);k++) {
-    const x=-6.2-j*2.15, z=-61+i*6.15, y=2.58+k*1.96;
-    const tint=freightColors[(i+2*j+k)%4]!;
-    box(x,y,z,1.98,1.94,5.9,tint);
-    for (let rib=0;rib<16;rib++) box(x,y,z-2.74+rib*.365,2.04,1.8,.055,tint);
+  // The service road follows the northern arm to the boat berth.
+  const access:Point[]=[[-26,-103],...breakwaterArms[0].slice(0,2).map(([x,z]):Point=>[x,z]),[40,-131],[40,back]];
+  for(let i=1;i<access.length;i++){
+    const [x,z]=access[i-1]!,[nx,nz]=access[i]!;
+    add(unitBox,[(x+nx)/2,deck-.18,(z+nz)/2],[4.8,.36,Math.hypot(nx-x,nz-z)+1],
+      "#958e7d",[0,Math.atan2(nx-x,nz-z),0]);
   }
-  for (const z of [-65]) {
-    box(-11.6,3.58,z,5.3,3.93,8.4,"#ac927a");
-    for (const side of [-1,1])
-      add(unitBox,[-11.6+side*1.4,5.87,z],[2.94,.17,8.8],"#647c7a",[0,0,-side*.24]);
-    for (const dz of [-2,2]) {
-      box(-14.29,2.94,z+dz,.09,2.65,2.9,"#5b7171");
-      for (let j=0;j<6;j++) box(-14.36,1.79+j*.43,z+dz,.06,.045,2.8,"#81918b");
-    }
-  }
+  // The slip and cradle stand beside the winch house.
+  add(unitBox,[-5.4,.75,-59],[9.5,.35,3.5],pierConcrete,[0,0,-.22]);
+  box(-7.8,1.75,-59,3.5,.35,1.8,wood);
+  add(canopy,[-7.8,2.18,-59],[2.3,.66,1.03],"#598076");
+  box(-11,2.72,-60,2.8,2.2,3.1,"#af997a");
+  box(-11,3.9,-60,3.2,.25,3.5,"#586b66");
+  box(-11,2.8,-58.42,.85,1.2,.09,iron);
+  // One pump supplies the fuel float.
+  box(1.4,.28,-9,6.8,.42,2.15,wood);
+  box(.8,.99,-9,.48,1.03,.37,"#b4b5a5");
+  ring(.81,1.02,-8.79,.26,iron,[0,0,0]);
   const submerged: BufferGeometry[] = [], dry: BufferGeometry[] = [];
   for (const piece of pieces) {
     piece.computeBoundingBox();

@@ -2,15 +2,16 @@ import { useEffect, useMemo, useRef } from "react";
 import type { RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import { DirectionalLight, Object3D, OrthographicCamera, Vector3 } from "three";
-import { cityLight } from "./palette.ts";
+import { cityLight } from "../lighting.ts";
 
 export function CitySun({night,wide,focus}:{night:boolean;wide:boolean;focus:RefObject<Vector3>}) {
   const light=useRef<DirectionalLight>(null);
   const target=useMemo(()=>new Object3D(),[]);
+  const mood=night?cityLight.night:cityLight.day;
   const vectors=useMemo(()=>({
-    sun:new Vector3(.57,1,.48).normalize(),ray:new Vector3(),point:new Vector3(),
+    sun:new Vector3(...mood.direction).normalize(),ray:new Vector3(),point:new Vector3(),
     right:new Vector3(),up:new Vector3(),worldUp:new Vector3(0,1,0),
-  }),[]);
+  }),[mood]);
   const resolution=wide?4096:2048;
   useEffect(()=>{
     const shadow=light.current?.shadow;
@@ -34,7 +35,6 @@ export function CitySun({night,wide,focus}:{night:boolean;wide:boolean;focus:Ref
     c.left=xmin-15;c.right=xmax+15;c.bottom=ymin-15;c.top=ymax+15;
     c.updateProjectionMatrix();
   });
-  const mood=night?cityLight.night:cityLight.day;
   return <><primitive object={target}/><directionalLight ref={light} target={target} color={mood.sun} intensity={mood.intensity}
     castShadow shadow-mapSize={[resolution,resolution]} shadow-camera-near={1} shadow-camera-far={860}
     shadow-bias={-.00008} shadow-normalBias={.035}/></>;

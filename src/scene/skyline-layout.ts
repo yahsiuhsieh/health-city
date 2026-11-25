@@ -1,3 +1,4 @@
+import type { FocusTarget } from "./focus-flight.ts";
 import { towerSites } from "./city/city-plan.data.ts";
 import type { HrvSkyline } from "../core/skyline.ts";
 
@@ -5,10 +6,10 @@ import {TOWER_DESIGNS,DISTRICT_SEED,designsForRow} from "./tower-designs.ts";
 export {TOWER_DESIGNS} from "./tower-designs.ts";
 
 export type TowerDesignId = typeof TOWER_DESIGNS[number]["id"];
-export type SceneView = "sleep" | "sleep-island" | "ridge" | "world" | "harbor" | "walk" | "road" | "detail" | "cargo" | "berth" | "skyline" | "square" | "side" | TowerDesignId;
-export type CameraCommand = { view: SceneView; revision: number; districtRows: number };
+export type ReviewView = "sleep" | "sleep-island" | "ridge" | "world" | "harbor" | "walk" | "road" | "detail" | "berth" | "skyline" | "square" | "side" | TowerDesignId;
+export type CameraCommand = { view: ReviewView | FocusTarget; revision: number; districtRows: number };
 
-export function isTowerView(view: SceneView): view is TowerDesignId {
+export function isTowerView(view: ReviewView | FocusTarget): view is TowerDesignId {
   return TOWER_DESIGNS.some(design => design.id === view);
 }
 export const TOWER_ASSETS = TOWER_DESIGNS.map(design => "/models/tower-" + design.id + ".glb");

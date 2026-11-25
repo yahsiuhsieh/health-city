@@ -1,3 +1,6 @@
+import { breakwaterArms } from "../city/harbor-plan.ts";
+import { outerReef } from "./outer-reef.ts";
+import { coastSegments } from "../coastline.ts";
 import { mistBank } from "./mist-bank.ts";
 import {expect,it} from "vitest";
 import { islandShape,polygonArea } from "./island-shape.ts";
@@ -12,10 +15,10 @@ const sizes=[5,20,60,180,442,720];
 it("scales the dry cay independently of the submerged reef at all six sizes",()=>{
   for(const minutes of sizes){
     const land=islandShape(session,minutes),reef=land.reef.bounds;
-    expect(polygonArea(land.polygon)).toBeCloseTo(24*minutes,5);
-    expect(polygonArea(land.reef.polygon)).toBeCloseTo(Math.max(15000,60*minutes),5);
-    const ratio=(reef.right-reef.left)/(reef.top-reef.bottom);
-    expect(ratio).toBeGreaterThanOrEqual(1.6);expect(ratio).toBeLessThanOrEqual(2.2);
+    expect(polygonArea(land.polygon)).toBeCloseTo(10*minutes,5);
+    expect(polygonArea(land.reef.polygon)).toBeCloseTo(Math.max(2500,25*minutes),5);
+    const ratio=(reef.top-reef.bottom)/(reef.right-reef.left);
+    expect(ratio).toBeGreaterThanOrEqual(1.5);expect(ratio).toBeLessThanOrEqual(2.2);
     expect(reef.top-land.bounds.top).toBeGreaterThanOrEqual(25);
     expect(Math.max(...land.polygon.map(p=>land.reef.distance(...p)))).toBeLessThan(0);
     expect(land.distance(...land.shore)).toBeCloseTo(0,4);
@@ -26,6 +29,18 @@ it("scales the dry cay independently of the submerged reef at all six sizes",()=
     expect(islandShape(stageChange).polygon).toEqual(land.polygon);
   }
 });
+it("fits the twelve-hour platform within one third of the city land area", () => {
+  const city = coastSegments.flatMap(segment => segment.points.slice(0, -1));
+  const island=islandShape(session,720);
+  const bounds=[...city,...breakwaterArms.flat(),...outerReef.vertices,...island.reef.polygon];
+  const span=(points:readonly (readonly [number,number])[],axis:0|1)=>Math.max(...points.map(p=>p[axis]))-Math.min(...points.map(p=>p[axis]));
+  expect(span(bounds,0)).toBeLessThanOrEqual(1.7*span(city,0));
+  expect(span(bounds,1)).toBeLessThanOrEqual(1.15*span(city,1));
+  expect(island.reef.bounds.bottom).toBeGreaterThanOrEqual(-120);
+  expect(island.reef.bounds.top).toBeLessThanOrEqual(120);
+  expect(island.platformArea).toBeLessThanOrEqual(polygonArea(city) / 3);
+});
+
 it("restores cay and reef shapes from the session seed",()=>{
   expect(islandShape(session).polygon).toEqual(islandShape(session).polygon);
   expect(islandShape({...session,id:"second"}).reef.polygon).not.toEqual(islandShape(session).reef.polygon);
@@ -117,14 +132,25 @@ it("clusters natural objects without regular spacing and keeps the crest covered
   expect(covered.length/land.reef.polygon.length).toBeGreaterThanOrEqual(.8);
 });
 
-it("covers each reef outline and its 30 m margin before the mist clears",()=>{
+it("extends mist downwind beyond the island while keeping the working boat clear",()=>{
   for(const size of sizes){
     const land=islandShape(session,size),bank=mistBank(land);
-    expect(bank.center).toEqual(land.reef.center);
-    for(const [i,a] of land.reef.polygon.entries()){
-      const b=land.reef.polygon[(i+1)%land.reef.polygon.length]!;
-      const dx=b[0]-a[0],dz=b[1]-a[1],len=Math.hypot(dx,dz);
-      for(const d of [0,15,30])expect(bank.density((a[0]+b[0])/2+d*dz/len,(a[1]+b[1])/2-d*dx/len)).toBeCloseTo(1,4);
+    expect(bank.center).toEqual(land.center);
+    expect(bank.density(...land.center)).toBe(1);
+    const downwind=land.center[0]+land.radius*1.22;
+    expect(downwind).toBeGreaterThan(land.bounds.right);
+    expect(bank.density(downwind,land.center[1]+.45*land.radius)).toBeGreaterThan(.1);
+    for(let i=-1;i<=1;i+=.1){
+      for(const sign of [-1,1]){
+        expect(bank.density(land.center[0]+sign*bank.halfX,land.center[1]+i*bank.halfZ)).toBe(0);
+        expect(bank.density(land.center[0]+i*bank.halfX,land.center[1]+sign*bank.halfZ)).toBe(0);
+      }
+    }
+    for(let s=0;s<=ROUTE_LENGTH;s+=1){
+      const p=routeFrame(s);
+      for(const along of [-10,0,10])for(const across of [-3,3]){
+        expect(bank.density(p.x+along*p.tx+across*p.nx,p.z+along*p.tz+across*p.nz)).toBe(0);
+      }
     }
   }
 });

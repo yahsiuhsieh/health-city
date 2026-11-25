@@ -1,6 +1,7 @@
 import { Temporal } from "@js-temporal/polyfill";
 
 import type { InspectionData, InspectionTable } from "../core/inspection-pages.ts";
+import { roundMeasurement } from "../core/measurement.ts";
 export type { InspectionData, InspectionTable } from "../core/inspection-pages.ts";
 export type DayWindow = { date: string; timeZone: string; nextDate: string; previousDate: string; start: string; end: string; following: string };
 
@@ -34,6 +35,12 @@ function text(value: unknown): string {
 function number(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Invalid Google Health number.");
   return value;
+}
+
+function measurement(value: unknown): number {
+  const measured = number(value);
+  if (measured < 0) throw new Error("Invalid negative Google Health measurement.");
+  return roundMeasurement(measured);
 }
 
 function integer(value: unknown): number {
@@ -75,13 +82,13 @@ export function stepInterval(point: unknown) {
 export function heartInterval(point: unknown) {
   const data = object(point);
   const raw = data.heartRate == null ? null : object(data.heartRate).beatsPerMinuteAvg;
-  return { ...interval(data), value: raw == null ? null : number(raw) };
+  return { ...interval(data), value: raw == null ? null : measurement(raw) };
 }
 
 export function calorieInterval(point: unknown) {
   const data = object(point);
   const calories = data.totalCalories == null ? null : object(data.totalCalories).kcalSum;
-  return { ...interval(data), value: calories == null ? null : number(calories) };
+  return { ...interval(data), value: calories == null ? null : measurement(calories) };
 }
 
 export function list(value: unknown): unknown[] {
@@ -93,7 +100,7 @@ export function list(value: unknown): unknown[] {
 function seconds(value: unknown): number | null {
   if (value == null) return null;
   if (typeof value !== "string" || !/^\d+(\.\d{1,9})?s$/.test(value)) throw new Error("Invalid Google Health duration.");
-  return number(Number(value.slice(0, -1)));
+  return measurement(Number(value.slice(0, -1)));
 }
 
 function daily(value: unknown, date: string): Record<string, unknown> {
@@ -104,10 +111,19 @@ function daily(value: unknown, date: string): Record<string, unknown> {
   return data;
 }
 
+export function dailyRhrRecord(point: unknown, date: string) {
+  const data = daily(object(point).dailyRestingHeartRate, date);
+  const metadata = data.dailyRestingHeartRateMetadata;
+  const method = metadata == null ? null : object(metadata).calculationMethod;
+  const bpm = integer(data.beatsPerMinute);
+  if (bpm <= 0) throw new Error("Invalid resting heart rate.");
+  return { bpm, method: method == null ? null : text(method) };
+}
+
 export function dailyHrvRmssd(point: unknown, date: string): number | null {
   const data = daily(object(point).dailyHeartRateVariability, date);
   const value = data.averageHeartRateVariabilityMilliseconds;
-  return value == null ? null : number(value);
+  return value == null ? null : measurement(value);
 }
 
 const table = (title: string, columns: string[], rows: InspectionTable["rows"]): InspectionTable => ({ title, columns, rows });
@@ -119,10 +135,8 @@ export function inspectRecords(kind: string, points: unknown[], window: DayWindo
   let count = points.length;
   if (kind === "daily-resting-heart-rate") {
     const rows = points.map((point) => {
-      const data = daily(object(point).dailyRestingHeartRate, window.date);
-      const metadata = data.dailyRestingHeartRateMetadata;
-      const method = metadata == null ? null : object(metadata).calculationMethod;
-      return [window.date, integer(data.beatsPerMinute), method == null ? null : text(method)];
+      const { bpm, method } = dailyRhrRecord(point, window.date);
+      return [window.date, bpm, method];
     });
     tables.push(table("Daily resting heart rate", ["Source date", "Beats per minute", "Calculation method"], rows));
     notes.push("Calculation methods remain separate. No canonical value is selected.");
@@ -149,8 +163,7 @@ export function inspectRecords(kind: string, points: unknown[], window: DayWindo
     const end = milliseconds(window.end);
     const seen = new Set<string>();
     const rows = points.map(point => {
-      const data = object(point);
-      const time = interval(data);
+      const time = heartInterval(point);
       const from = milliseconds(time.start);
       const until = milliseconds(time.end);
       if (from < start || until > end || (from - start) % 300_000 !== 0 ||
@@ -160,10 +173,7 @@ export function inspectRecords(kind: string, points: unknown[], window: DayWindo
         throw new Error("Unexpected or duplicate heart rate interval.");
       }
       seen.add(time.start);
-      const raw = data.heartRate == null ? null : object(data.heartRate).beatsPerMinuteAvg;
-      const mean = raw == null ? null : number(raw);
-      if (mean !== null && mean < 0) throw new Error("Invalid heart rate average.");
-      return [time.start, time.end, mean];
+      return [time.start, time.end, time.value];
     }).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
     tables.push(table("Five-minute heart rate", ["Start (UTC)", "End (UTC)", "Mean bpm"], rows));
     notes.push("Google Health provides each interval average. Missing averages remain unavailable.");

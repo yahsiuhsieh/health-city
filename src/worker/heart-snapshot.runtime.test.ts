@@ -15,9 +15,24 @@ it("replaces complete account-day snapshots atomically in local D1",async()=>{
     }
     await db.prepare("INSERT INTO google_connection VALUES(1,'sample','mock',NULL,'mock')").run();
     const window=dayWindow("2026-11-01","America/Chicago")!;
-    const values=Array<number|null>(300).fill(null);values[44]=70.012;
+    const values=Array<number|null>(300).fill(null);
+    values[44]=70.015;
+    values[46]=0;
+    values[299]=70.012;
+    const expected=values.slice();
+    expected[44]=70.02;
+    expected[299]=70.01;
+    await db.prepare("INSERT INTO heart_rate_days VALUES(?,?,?,?,?,?,?,?)")
+      .bind("sample",window.date,window.timeZone,window.start,window.end,JSON.stringify(values),0,0).run();
+    expect(await readHeartSnapshot(db,"sample",window)).toEqual(expected);
+
+    const migration=await readFile(new URL("../../migrations/0004_round_heart_rate_means.sql",import.meta.url),"utf8");
+    const storedMeans=async()=>JSON.parse((await db.prepare("SELECT means FROM heart_rate_days").first<string>("means"))!);
+    expect((await db.prepare(migration).run()).meta.changes).toBe(1);
+    expect(await storedMeans()).toEqual(expected);
+    expect((await db.prepare(migration).run()).meta.changes).toBe(0);
     await saveHeartSnapshot(db,"sample",window,values,1,3);
-    expect(await readHeartSnapshot(db,"sample",window)).toEqual(values);
+    expect(await storedMeans()).toEqual(expected);
     const empty=values.map(()=>null);
     await saveHeartSnapshot(db,"sample",window,empty,2,4);
     await saveHeartSnapshot(db,"sample",window,values,1,5);

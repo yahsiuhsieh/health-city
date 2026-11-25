@@ -50,7 +50,7 @@ export const CITY_PLAN:StreetGraph={nodes,edges};
 function rectangle(x:number,z:number,w:number,d:number):Point[]{
   return [[x,z],[x+w,z],[x+w,z+d],[x,z+d]];
 }
-export const reservoirSite=rectangle(-207,74,45,35);
+export const reservoirSite=rectangle(-274,80,122,102);
 export const exerciseGardenSite=rectangle(-160,74,50,40);
 export const civicPlaza:Point[]=[[-83,29.3],[-57,29.3],[-62,32],[-83,35.2]];
 

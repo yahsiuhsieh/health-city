@@ -443,7 +443,7 @@ Use the detailed [building descriptions, colors, module variants, and excluded d
 
 Show the tower and its podium when the daily count exceeds the zero-based occupancy index. Otherwise show the fixed interim form. If HRV is unavailable, show only a neutral paved base and the tower envelope. Apply the state when the date loads. Seeking preserves it. Keep the full count and the overflow message above 30.
 
-Clicking an interim building, park, or plaza pauses the replay and opens the **HRV plot** card. Ignore drags. Show the threshold in milliseconds, calculated as five times the one-based plot number. Show the day's precise HRV and full tower count, or **No HRV data**.
+Clicking an interim building, park, or plaza pauses the replay and opens the **HRV plot** card. Ignore drags. Show the threshold in milliseconds, calculated as five times the one-based plot number. Show the day's HRV to two decimal places and the full tower count. If HRV is unavailable, show **No HRV data**.
 
 Run the [allocation, model-height, daily-state, threshold, and browser inspection tests](hrv-plot-interim-forms.md#8-tests).
 

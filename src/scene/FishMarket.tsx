@@ -1,8 +1,7 @@
 import { OverviewModel } from "./city/OverviewModel.tsx";
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useLoader } from "@react-three/fiber";
-import type { ThreeEvent } from "@react-three/fiber";
-import { Mesh, MeshStandardMaterial, Object3D, Vector3 } from "three";
+import { Mesh, Object3D, Vector3 } from "three";
 import type { InstancedMesh } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { boatPose } from "../core/representative-day.ts";
@@ -14,7 +13,6 @@ import { voyage } from "./sleep-voyage.ts";
 import { workingQuay } from "./city/harbor-plan.ts";
 import { port } from "./port-layout.ts";
 import { workingLines as fastenings } from "./harbor-layout.ts";
-import { cargoPose } from "./port-motion.ts";
 
 const horizontal=new Vector3(1,0,0);
 const up = new Vector3(0, 1, 0);
@@ -78,50 +76,8 @@ export function MooringLines({ replay,sleep }: { replay: Replay;sleep:DaySleepVo
   </instancedMesh></>;
 }
 
-export function CargoBerth({ replay, night, onReady, onSelect }: {
-  replay: Replay; night: boolean; onReady: () => void; onSelect: () => void;
-}) {
-  const gltf = useLoader(GLTFLoader, "/models/cargo-berth.glb");
-  const rig = useMemo(() => {
-    const scene = gltf.scene.clone(true);
-    const lamps = new MeshStandardMaterial({ vertexColors: true, roughness: .42 });
-    scene.traverse(child => {
-      if (!(child instanceof Mesh)) return;
-      child.castShadow = true;
-      child.receiveShadow = true;
-      if (child.material.name === "work-lamps") child.material = lamps;
-    });
-    const target = new Object3D();
-    target.position.set(-1.8, 0, -4.4);
-    return { scene, lamps, target, turntable: scene.getObjectByName("CraneTurntable")!,
-      lines: scene.getObjectByName("HoistLines")!, load: scene.getObjectByName("SlungPallet")! };
-  }, [gltf]);
-  useEffect(() => onReady(), [onReady]);
-  useEffect(() => {
-    rig.lamps.emissive.set(night ? "#ffdb99" : "#000000");
-    rig.lamps.emissiveIntensity = night ? 1.35 : 0;
-  }, [rig, night]);
-  useEffect(() => () => rig.lamps.dispose(), [rig]);
-  useFrame(() => {
-    const { yaw, height } = cargoPose(replay.read().seconds);
-    rig.turntable.rotation.y = yaw;
-    rig.lines.scale.y = port.sheaveHeight - height - port.slingHeight;
-    rig.load.position.y = height;
-  });
-  const down = useRef<[number, number] | null>(null);
-  function inspect(event: ThreeEvent<MouseEvent>) {
-    event.stopPropagation();
-    if (down.current && Math.hypot(event.clientX - down.current[0], event.clientY - down.current[1]) < 5) onSelect();
-    down.current = null;
-  }
-  return <group name="General cargo berth" position={[port.craneX, port.quayY, port.craneZ]}
-    onPointerDown={event => { down.current = [event.clientX, event.clientY]; }} onClick={inspect}>
-    <OverviewModel model={rig.scene} animated/>
-
-    {night && <>
-      <primitive object={rig.target}/>
-      <spotLight position={[-6.62,5.24,-1.5]} target={rig.target} color="#ffdcab"
-        intensity={162} angle={.80} penumbra={.68} distance={16}/>
-    </>}
-  </group>;
+export function FishMarket({onReady}:{onReady:()=>void}){
+  const {scene}=useLoader(GLTFLoader,"/models/fish-market.glb");
+  useEffect(()=>onReady(),[onReady]);
+  return <group position={[-9,port.quayY,-34]}><OverviewModel model={scene}/></group>;
 }

@@ -165,7 +165,7 @@ The documented methods are:
 - `ONLY_WITH_AWAKE_DATA`.
 - `CALCULATION_METHOD_UNSPECIFIED`.
 
-Preserve these enum names instead of adapting older or exported field names. The checked documentation does not establish a universal method priority for the app. Selection of a canonical daily value and agreement with the app still require checks.
+Preserve these enum names instead of adapting older or exported field names. The checked documentation does not establish a universal method priority for the app. HealthCity prefers `WITH_SLEEP` over `ONLY_WITH_AWAKE_DATA` for the daily value and the seven-day comparison.
 
 Do not average methods or automatically select the lowest value. Do not present a method change as a physiological trend. RHR is a daily summary, not instantaneous heart rate or a standalone health or stress grade.
 
@@ -257,9 +257,29 @@ The [minimum-storage policy](product-spec.md#minimum-necessary-storage) applies 
 | Weather | City/date attribution, replay weather values, sunrise/sunset, and necessary source/estimate metadata. | No complete model grids or unused provider fields. |
 | Authentication and synchronization | Necessary owner/session/token state, expiry, synchronization status, and correction/deletion tracking. | No indefinite operational logs or redundant payload copies by default. |
 
-Preserve exact values required by the current representation. Aggregation does not authorize inventing coverage, zeros, or stage boundaries. Raw samples may be needed during conversion without requiring permanent storage.
+Round fractional measurements to two decimal places before storage and replay calculations. Preserve counts and time boundaries at their original resolution.
+Preserve missing values, recorded zeros, and coverage. Stage boundaries retain source precision.
+The Worker can use raw samples during conversion without permanent storage.
 
 Measure representative storage and read/write costs before expanding synchronized history. Add fields for concrete new requirements when needed. Previously discarded detail may require another source query and may not remain available.
+
+### Metric history approved on November 25, 2026
+
+Each table references the owner through `google_sub` with cascading deletion. The sync time records the last complete read.
+
+| Table | Owner key suffix | Other fields and purpose |
+| --- | --- | --- |
+| `rhr_days` | `date` | `status` records ready or none. `records` retains integer bpm and the original method or null for each record. |
+| `hrv_days` | `date` | `status` records ready or none. `rmssd_ms` supplies the skyline and chart at two decimal places. |
+| `step_days` | `date, zone` | `start_utc, end_utc` delimit the day. `totals` holds five-minute integer counts for pedestrians and charts. |
+| `energy_days` | `date, zone` | The same bounds delimit the day. `totals` holds five-minute kcal totals at two decimal places for traffic and charts. |
+| `sleep_sessions` | `session_id` | `start_utc, end_utc` delimit the session. `segments, short_awakenings` preserve the voyage chronology in whole seconds from the start. |
+| `sleep_query_days` | `date, zone` | A row confirms a successful query even when the source returns no sessions. |
+
+Each table includes `synced_at`. Write only after complete retrieval for that stream.
+Use null for missing five-minute intervals and retain recorded zeros. Derive daily totals, coverage, and chart averages during reads.
+Retain all dates until account clearing, subject to confirmed source corrections and deletions.
+The seven-day chart attributes sleep to the session end date in the replay zone.
 
 ## Required account checks
 
@@ -306,7 +326,7 @@ Only HTTP 200 or an explicit HTTP 400 `invalid_token` response permits local cle
 Other failures preserve local authorization and sessions so the owner can retry. No automatic retries occur.
 Successful clearing deletes all sessions, OAuth flows, and the Google connection in one D1 transaction.
 Sign-in persistence requires its claimed flow to remain present. Clearing the flows prevents an older callback from restoring a connection.
-No health-history tables, raw-response caches, or synchronization jobs exist yet. Their future implementation must extend the clearing inventory.
+Account clearing must also delete the owner’s rows from `heart_rate_days`, `rhr_days`, `hrv_days`, `step_days`, `energy_days`, `sleep_sessions`, and `sleep_query_days`.
 Application secrets, the D1 schema, local project files, and Google Health source records remain unchanged.
 Cloudflare-managed recovery backups are outside SQL deletion. Earlier encrypted records can remain until provider retention expires.
 Google revocation can affect all OAuth clients and scopes in the same Google Cloud project, not only the current client.
@@ -354,7 +374,7 @@ The example GET and the owner-only HRV POST remain available at `/api/replay/dai
 - A complete read returns whole sessions that intersect the selected day. A session that ends after the query window can escape retrieval.
 - Short awakenings override overlapping stages in the replay timeline. The timeline counts overlapping awake time once and retains each short awakening for inspection.
 - Missing or conflicting stage intervals remain unavailable. The replay uses an unclassified asleep interval when a stage-free record reports sleep for its full duration.
-- The Worker does not store sleep records in D1. The separate heart-rate snapshot policy still applies.
+- Persist complete reconciled sessions in `sleep_sessions`. Record each successfully queried replay date in `sleep_query_days`.
 
 Synthetic transport tests cover the replay contract.
 An authorized production check on November 21, 2026 loaded November 18 in America/Chicago.
@@ -463,7 +483,12 @@ This check does not measure how many HTTP pages the initial reader consumed or e
 ### Heart-rate replay snapshots
 
 Migration `0003_heart_rate_days.sql` creates the table for heart-rate snapshots.
+Migration `0004_round_heart_rate_means.sql` rounds means in existing snapshots to two decimal places.
 If the snapshot write fails, the Worker still returns the valid Google Health values for the current replay.
 If the Google Health read fails, the Worker can use an existing snapshot for the same account, date, and time zone.
 
-One row stores the last complete Google Health read for an account, local date, and time zone. The account key links the snapshot to connection removal. The UTC start and end define the interval grid. Each JSON array position represents 300 seconds from the start. A number preserves the API mean in bpm. A null marks an unavailable mean. The source is Google Health heart-rate rollup for every row. The synchronization timestamp records the successful read time. The request timestamp prevents older concurrent reads from replacing newer reads.
+One row stores the last complete Google Health read for an account, local date, and time zone. The account key links the snapshot to connection removal. The UTC start and end define the interval grid. Each JSON array position represents 300 seconds from the start.
+
+Each numeric value stores the rounded mean in bpm. A null marks an unavailable mean. The source is Google Health heart-rate rollup for every row.
+
+The synchronization timestamp records the successful read time. The request timestamp prevents older concurrent reads from replacing newer reads.

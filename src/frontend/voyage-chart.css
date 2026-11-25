@@ -55,21 +55,6 @@ h3{margin:0 0 12px;font-size:13px;font-weight:600;color:var(--ink-2)}
   .close {padding:0}
   .status {flex-wrap:wrap}
   .status button {padding:0 3px;border:0;background:transparent;text-decoration:underline;color:var(--accent)}
-  .timeline {display:grid;grid-template-columns:64px 1fr;padding:10px 12px 22px 0}
-  .row-labels {display:grid;grid-auto-rows:30px;font-size:12px;color:var(--ink-2)}
-  .row-labels span {line-height:22px}
-  .time-plot {position:relative;height:116px}
-  .gridline {position:absolute;inset-block:0;border-left:1px solid var(--line)}
-  .gridline span,.first-hour {position:absolute;top:100%;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
-  .gridline span {transform:translateX(-50%)}
-  .riser {position:absolute;border-left:1.5px solid #c4d1cd}
-  .segment {position:absolute;height:22px;border:0;border-right:1px solid var(--surface);border-radius:4px;padding:0}
-  .segment[aria-pressed=true],.segment:focus-visible {outline:2px solid var(--ink);outline-offset:1px;z-index:1}
-  .future {position:absolute;inset-block:-4px 0;right:0;border-left:1.5px solid var(--ink);background:repeating-linear-gradient(45deg,#f1f5f4 0 4px,#dfe7e4 4px 6px)}
-  .future span {position:absolute;bottom:100%;left:0;transform:translateX(-50%);background:var(--ink);color:white;padding:1px 4px;border-radius:4px;font-size:11px}
-  .interval-tip {position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-108%);background:var(--ink);color:white;font-size:12px;padding:5px 8px;border-radius:6px;white-space:nowrap}
-  .map-key {display:flex;justify-content:space-between;padding:0 8px 6px;font-size:11px;color:var(--ink-2)}
-  .map svg {max-height:170px}
   .facts dd > div {display:block}
 }
 @container (max-width:479px) {
@@ -101,4 +86,22 @@ h3{margin:0 0 12px;font-size:13px;font-weight:600;color:var(--ink-2)}
     .legend li {grid-template-columns:10px auto 1fr;align-items:baseline}
     .legend .value {grid-column:auto;text-align:right}
   }
+}
+
+:is(.voyage-chart,.metric-card) {
+  .timeline {display:grid;grid-template-columns:64px 1fr;padding:10px 12px 22px 0}
+  .row-labels {display:grid;grid-auto-rows:30px;font-size:12px;color:var(--ink-2)}
+  .row-labels span {line-height:22px}
+  .time-plot {position:relative;height:116px}
+  .gridline {position:absolute;inset-block:0;border-left:1px solid var(--line)}
+  .gridline span,.first-hour {position:absolute;top:100%;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+  .gridline span {transform:translateX(-50%)}
+  .riser {position:absolute;border-left:1.5px solid #c4d1cd}
+  .segment {position:absolute;height:22px;border:0;border-right:1px solid var(--surface);border-radius:4px;padding:0}
+  .segment[aria-pressed=true],.segment:focus-visible {outline:2px solid var(--ink);outline-offset:1px;z-index:1}
+  .future {position:absolute;inset-block:-4px 0;right:0;border-left:1.5px solid var(--ink);background:repeating-linear-gradient(45deg,#f1f5f4 0 4px,#dfe7e4 4px 6px)}
+  .future span {position:absolute;bottom:100%;left:0;transform:translateX(-50%);background:var(--ink);color:white;padding:1px 4px;border-radius:4px;font-size:11px}
+  .interval-tip {position:absolute;z-index:2;pointer-events:none;transform:translate(-50%,-108%);background:var(--ink);color:white;font-size:12px;padding:5px 8px;border-radius:6px;white-space:nowrap}
+  .map-key {display:flex;justify-content:space-between;padding:0 8px 6px;font-size:11px;color:var(--ink-2)}
+  .map svg {max-height:170px}
 }

@@ -57,7 +57,7 @@ function batchParts(parts: Part[], model: Object3D, animated: boolean, frame: { 
   batch.receiveShadow = reference.receiveShadow;
   batch.frustumCulled = false;
   batch.perObjectFrustumCulled = false;
-  batch.sortObjects = false;
+  batch.sortObjects = material.transparent;
   const pieces: Piece[] = [];
   for (const mesh of parts) {
     const instances = mesh instanceof InstancedMesh ? mesh.count : 1;
@@ -112,23 +112,24 @@ export function OverviewModel({ model, animated = false, omitSmall = false }: {
       if (object instanceof Light && object.visible) lights.push(object);
       if (!(object instanceof Mesh) || !(object.material instanceof MeshStandardMaterial)) return;
       // These fittings change visibility independently during a voyage.
-      if(object.parent?.name.startsWith("light-") || /^(?:cabin-shutter|anchor-ball|bow-anchor)/.test(object.name) || object.parent?.name==="bow-anchor")return;
+      if(object.parent?.name.startsWith("light-") || /^(?:anchor-ball|bow-anchor)/.test(object.name) || object.parent?.name==="bow-anchor")return;
       const m = object.material;
-      if (m.transparent || m.map || !object.geometry.hasAttribute("normal")) return;
+      const window=object.name.startsWith("cabin-window");
+      if ((m.transparent && !window) || m.map || !object.geometry.hasAttribute("normal")) return;
       layers.set(object, object.layers.mask);
-      if (omitSmall && !/lamp|light|window/i.test(object.name)) {
+      if (omitSmall && !/lamp|light|window|cabin-shutter/i.test(object.name)) {
         if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
         const box = object.geometry.boundingBox!.clone().applyMatrix4(object.matrixWorld);
         if (box.getSize(size).length() < 1) return;
       }
       const emissive = /window|lamp|light/i.test(object.name+" "+m.name) || m.emissive.getHex() !== 0;
       const key = [object.layers.mask, object.castShadow, object.receiveShadow, m.side,
-        m.vertexColors && object.geometry.hasAttribute("color"), emissive ? m.uuid : ""].join("/");
+        m.vertexColors && object.geometry.hasAttribute("color"), emissive ? m.uuid : "", object.name.startsWith("cabin-shutter")?"shutter":""].join("/");
       const group = groups.get(key) ?? [];
       group.push(object as Part);
       groups.set(key, group);
     });
-    const batches = [...groups.values()].map(parts => batchParts(parts, model, animated, frame));
+    const batches = [...groups.values()].map(parts => batchParts(parts, model, animated||parts[0]!.name.startsWith("cabin-shutter"), frame));
     for (const light of lights) light.visible = false;
     for (const mesh of layers.keys()) mesh.layers.mask = 0;
     for (const batch of batches) model.add(batch);

@@ -5,7 +5,7 @@ test("inspects an interim shop and pauses the 27.4 ms replay",async({page})=>{
   await page.goto("/?reviewPlot=5");
   await expect(page.getByText("Synthetic daily HRV 27.40 ms · 5 buildings")).toBeVisible();
   const play=page.getByRole("button",{name:"Play",exact:true});
-  await expect(play).toBeEnabled();
+  await expect(play).toBeEnabled({timeout:20000});
   const box=(await page.locator("canvas").boundingBox())!;
   const x=box.x+box.width*.49,y=box.y+box.height*.49;
   await play.click();

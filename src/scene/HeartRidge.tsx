@@ -1,73 +1,94 @@
 import { useEffect,useLayoutEffect,useMemo,useRef } from "react";
 import { useFrame,useLoader } from "@react-three/fiber";
 import type { ThreeEvent } from "@react-three/fiber";
-import { BufferGeometry,Color,DoubleSide,Float32BufferAttribute,Group,Vector3,Mesh,MeshBasicMaterial,Raycaster,InstancedMesh,Object3D } from "three";
+import { BufferGeometry,Color,DoubleSide,Float32BufferAttribute,Group,Vector3,InstancedMesh,Object3D } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { ReplayDay } from "../core/representative-day.ts";
 import type { Replay } from "../core/replay.ts";
 import { ridgeFootX } from "./city/ridge-foot.ts";
 import { surfaceHeight } from "./city/terrain.ts";
-import { ridgeLength,ridgeProfile } from "./ridge-profile.ts";
+import { ridgeLength,ridgeProfile,ridgeSurface,ridgeBackX } from "./ridge-profile.ts";
 import { SignText } from "./HarborBlock.tsx";
 
 type Profile=ReturnType<typeof ridgeProfile>;
+const clamp=(x:number)=>Math.max(0,Math.min(1,x));
 function ridgeMesh(profile:Profile,n:number){
-  const positions:number[]=[],colors:number[]=[];
-  function section(u:number,sample:number,valid:boolean){
-    const {x,y}=profile.track(sample),crest=profile.x(u),end=profile.z(u);
-    const h=valid?profile.height(sample):5;
-    const rail=valid?y:3;
-    const roll=Math.sin(17*u)+.6*Math.cos(42*u),rock=Math.cos(29*u);
-    const toe=ridgeFootX(end), grade=surfaceHeight(toe,end), rise=rail-grade;
-    const bank=toe-(toe-x)*.35, shoulder=toe-(toe-x)*.70;
-    const back=-256;
-    return [[toe,grade-.04,end],[bank,grade+.14*rise,end],[shoulder,grade+(.48+.04*roll)*rise,end],[x+1.25,rail-.10,end],
-      [x-1.25,rail-.10,end],[crest+4+rock,h*(.78+.05*roll),end],[crest,h,end],
-      [crest+(back-crest)*.34,h*(.79+.04*rock),end],[crest+(back-crest)*.74,4+rock,end],[back,.45,end]];
-  }
-  const palette=["#a6b18a","#91a178","#7c936e","#9b927e","#7e946e","#899779","#8f9582","#758a72","#a4aa8a"];
-  for(const r of profile.ranges){
-    const start=r.start/n,end=r.end/n;
-    let prev=section(start,start,r.valid);
-    for(let k=r.start*2+1;k<=r.end*2;k++){
-      const u=k/(2*n),next=section(u,Math.min(u,end-1e-9),r.valid);
-      for(let j=0;j<palette.length;j++){
-        const color=new Color(palette[j]!).multiplyScalar(.99+.022*Math.sin(k*.11+j));
-        for(const p of [prev[j],next[j],prev[j+1],prev[j+1],next[j],next[j+1]]){
-          positions.push(...p!);colors.push(color.r,color.g,color.b);
+  const positions:number[]=[],colors:number[]=[],indices:number[]=[];
+  const grass=new Color("#768f68"),scrub=new Color("#969a76"),rock=new Color("#929182");
+  const color=new Color(),columns=72;
+  for(const range of profile.ranges){
+    if(!range.valid)continue;
+    const first=positions.length/3;
+    const rows=range.end-range.start+1;
+    for(let i=0;i<=rows;i++){
+      const u=(range.start+Math.max(0,Math.min(rows-1,i-.5)))/n;
+      const sample=Math.min(u,(range.end-.000001)/n),z=profile.z(u),crest=profile.x(sample);
+      for(let j=0;j<=columns;j++){
+        const t=j/columns;
+        const x=t<=.5?ridgeBackX+(crest-ridgeBackX)*2*t:crest+(ridgeFootX(z)-crest)*(2*t-1);
+        const y=ridgeSurface(profile,sample,x);
+        const slope=Math.abs(ridgeSurface(profile,sample,x+.35)-ridgeSurface(profile,sample,x-.35))/.7;
+        const grain=.5+.5*Math.sin(z*.27+x*.34+1.7*Math.cos(z*.13-x*.31));
+        color.copy(grass).lerp(scrub,clamp(y/48+.16*grain)).lerp(rock,clamp((slope-.6)*.82));
+        color.multiplyScalar(.94+.10*grain);
+        positions.push(x,y,z);colors.push(color.r,color.g,color.b);
+        if(i && j){
+          const d=first+i*(columns+1)+j,a=d-columns-2;
+          indices.push(a,a+1,d,a,d,d-1);
         }
       }
-      prev=next;
     }
-    for(const [u,sample] of [[start,start],[end,end-1e-9]] as const){
-      const line=section(u,sample,r.valid),color=new Color("#8d9181");
-      for(let i=1;i<line.length;i++){
-        const a=line[i-1]!,b=line[i]!,c=[a[0]!,.44,a[2]!],d=[b[0]!,.44,b[2]!];
-        for(const p of [a,b,c,c,b,d]){positions.push(...p);colors.push(color.r,color.g,color.b)}
+    // Close each cut at a gap. Taper the two outer ends down to the city terrain.
+    for(const end of [false,true]){
+      const edge=first+(end?rows:0)*(columns+1),base=positions.length/3;
+      const atLimit=end?range.end===n:range.start===0;
+      for(let j=0;j<=columns;j++){
+        const index=(edge+j)*3,x=positions[index]!,z=positions[index+2]!+(atLimit?(end?-8:8):0);
+        positions.push(x,surfaceHeight(x,z)-.04,z);
+        colors.push(grass.r,grass.g,grass.b);
+        if(j){
+          const a=edge+j-1,b=base+j-1;
+          if(end)indices.push(a,a+1,b+1,a,b+1,b);
+          else indices.push(a,b+1,a+1,a,b,b+1);
+        }
       }
     }
   }
-  for(const u of [0,1]){
-    const edge=section(u,u===0?0:1-1e-9,profile.ranges[u===0?0:profile.ranges.length-1]!.valid);
-    for(let i=1;i<edge.length;i++){
-      const a=edge[i-1]!,b=edge[i]!;
-      const tip=[profile.x(u),.46,(u===0?1:-1)*81];
-      for(const p of [a,b,tip]){positions.push(...p);const c=new Color(palette[i-1]);colors.push(c.r,c.g,c.b)}
-    }
-  }
-  const g=new BufferGeometry();g.setAttribute("position",new Float32BufferAttribute(positions,3));
-  g.setAttribute("color",new Float32BufferAttribute(colors,3));g.computeVertexNormals();return g;
+  const g=new BufferGeometry();
+  g.setAttribute("position",new Float32BufferAttribute(positions,3));
+  g.setAttribute("color",new Float32BufferAttribute(colors,3));
+  g.setIndex(indices);g.computeVertexNormals();return g;
 }
-function rails(profile:Profile,n:number){
-  const vertices:number[]=[];
-  for(const r of profile.ranges.filter(r=>r.valid)){
-    for(let k=r.start*2;k<r.end*2;k++){
-      const a=profile.track(k/(2*n)),b=profile.track(Math.min((k+1)/(2*n),r.end/n-1e-9));
-      for(const dx of [-.46,.46])vertices.push(a.x+dx,a.y,a.z,b.x+dx,b.y,b.z);
-      if(k%4===0)vertices.push(a.x-.74,a.y-.03,a.z,a.x+.74,a.y-.03,a.z);
+
+function RidgeTracks({profile,n}:{profile:Profile;n:number}){
+  const rails=useRef<InstancedMesh>(null),sleepers=useRef<InstancedMesh>(null);
+  useLayoutEffect(()=>{
+    if(!rails.current || !sleepers.current)return;
+    const transform=new Object3D(),delta=new Vector3(),axis=new Vector3(0,0,1);
+    let r=0,s=0;
+    for(const range of profile.ranges.filter(range=>range.valid)){
+      const count=Math.max(1,Math.ceil(ridgeLength*(range.end-range.start)/n/.68));
+      for(let i=0;i<count;i++){
+        const u=(range.start+(range.end-range.start)*i/count)/n;
+        const v=(range.start+(range.end-range.start)*(i+1)/count)/n;
+        const a=profile.track(u),b=profile.track(v);
+        delta.set(b.x-a.x,b.y-a.y,b.z-a.z);
+        const length=delta.length();transform.quaternion.setFromUnitVectors(axis,delta.normalize());
+        for(const dx of [-.46,.46]){
+          transform.position.set((a.x+b.x)/2+dx,(a.y+b.y)/2,(a.z+b.z)/2);
+          transform.scale.set(.07,.08,length+.015);transform.updateMatrix();
+          rails.current.setMatrixAt(r++,transform.matrix);
+        }
+        transform.position.set(a.x,a.y-.07,a.z);transform.scale.set(1.52,.08,.18);
+        transform.updateMatrix();sleepers.current.setMatrixAt(s++,transform.matrix);
+      }
     }
-  }
-  const g=new BufferGeometry();g.setAttribute("position",new Float32BufferAttribute(vertices,3));return g;
+    rails.current.count=r;sleepers.current.count=s;
+    for(const mesh of [rails.current,sleepers.current]){mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}
+  },[profile,n]);
+  const capacity=n+Math.ceil(ridgeLength/.68);
+  return <><instancedMesh ref={rails} args={[undefined,undefined,capacity*2]}><boxGeometry/><meshStandardMaterial color="#696a62"/></instancedMesh>
+    <instancedMesh ref={sleepers} args={[undefined,undefined,capacity]}><boxGeometry/><meshStandardMaterial color="#65594a"/></instancedMesh></>;
 }
 function tunnelMesh(profile:Profile,start:number,end:number){
   const vertices:number[]=[],colors:number[]=[];
@@ -118,8 +139,8 @@ function tunnelMesh(profile:Profile,start:number,end:number){
 }
 export function HeartRidge({day,replay,available,inspect}:{day:ReplayDay;replay:Replay;available:boolean;inspect:(a:number,b:number)=>void}){
   const profile=useMemo(()=>ridgeProfile(day.heartMeans),[day.heartMeans]),n=day.heartMeans.length;
-  const terrain=useMemo(()=>ridgeMesh(profile,n),[profile,n]),track=useMemo(()=>rails(profile,n),[profile,n]);
-  useEffect(()=>()=>{terrain.dispose();track.dispose()},[terrain,track]);
+  const terrain=useMemo(()=>ridgeMesh(profile,n),[profile,n]);
+  useEffect(()=>()=>{terrain.dispose()},[terrain]);
   const tunnels=useMemo(()=>profile.ranges.filter(r=>!r.valid && (r.start>0 || r.end<n)).map(r=>({...r,geometry:tunnelMesh(profile,r.start/n,r.end/n)})),[profile,n]);
   useEffect(()=>()=>tunnels.forEach(t=>t.geometry.dispose()),[tunnels]);
   const asset=useLoader(GLTFLoader,"/models/ridge-railcar.glb");
@@ -149,8 +170,7 @@ export function HeartRidge({day,replay,available,inspect}:{day:ReplayDay;replay:
   const trees=useRef<InstancedMesh>(null),rocks=useRef<InstancedMesh>(null);
   useLayoutEffect(()=>{
     if(!trees.current || !rocks.current)return;
-    const surface=new Mesh(terrain,new MeshBasicMaterial({side:DoubleSide}));
-    const ray=new Raycaster(),dummy=new Object3D();
+    const dummy=new Object3D();
     for(const [kind,instances,count] of [["tree",trees.current,215],["rock",rocks.current,75]] as const){
       let placed=0;
       for(let i=0;i<count;i++){
@@ -161,10 +181,11 @@ export function HeartRidge({day,replay,available,inspect}:{day:ReplayDay;replay:
         const rear=i%2===0;
         const x=shoulder?profile.x(z>0?0:1)+4*Math.sin(i+(kind==="rock"?4:0)):rear?crest-(kind==="tree"?15+4*Math.sin(i*.79):5+3*Math.cos(i)):crest+offset;
         if (x>ridgeFootX(z)-1.4 || Math.abs(x-profile.track(u).x)<2.9) continue;
-        ray.set(new Vector3(x,75,z),new Vector3(0,-1,0));
-        const hit=ray.intersectObject(surface)[0];if(!hit || hit.point.y<surfaceHeight(x,z)-.04)continue;
+        if(shoulder || !profile.height(u))continue;
+        const y=ridgeSurface(profile,u,x);
+        if(kind==="tree" && (y>32 || Math.abs(ridgeSurface(profile,u,x+.5)-ridgeSurface(profile,u,x-.5))>1.1))continue;
         const size=.85+.32*Math.cos(i*.86);
-        dummy.position.set(x,hit.point.y+(kind==="tree"?1.42*size:0),z);
+        dummy.position.set(x,y+(kind==="tree"?1.42*size:0),z);
         dummy.rotation.set(0,i*2.4,kind==="rock"?.26:0);
         dummy.scale.setScalar(size);
         dummy.updateMatrix();instances.setMatrixAt(placed,dummy.matrix);
@@ -175,11 +196,11 @@ export function HeartRidge({day,replay,available,inspect}:{day:ReplayDay;replay:
       if(instances.instanceColor)instances.instanceColor.needsUpdate=true;
       instances.computeBoundingSphere();
     }
-    surface.material.dispose();
+
   },[terrain,profile]);
   return <group name="Heart-rate mountains">
     <mesh geometry={terrain} receiveShadow onClick={e=>{const i=profile.index(.5-e.point.z/ridgeLength);click(e,i,i+1)}}><meshStandardMaterial vertexColors side={DoubleSide}/></mesh>
-    <lineSegments geometry={track}><lineBasicMaterial color="#55483c"/></lineSegments>
+    <RidgeTracks profile={profile} n={n}/>
     <instancedMesh ref={trees} args={[undefined,undefined,215]}><coneGeometry args={[1.12,3.3,7]}/><meshStandardMaterial flatShading/></instancedMesh>
     <instancedMesh ref={rocks} args={[undefined,undefined,75]}><dodecahedronGeometry args={[1.1,0]}/><meshStandardMaterial flatShading/></instancedMesh>
     {[0,1].map(u=>{

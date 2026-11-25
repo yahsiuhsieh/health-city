@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { asleepSeconds, elapsedSeconds, isAsleep, type DaySleepVoyage, type SleepStage } from "../core/sleep-replay.ts";
+import { roundMeasurement } from "../core/measurement.ts";
 import { sleepFormatter } from "./SleepDetails.tsx";
 import { coastSegments } from "../scene/coastline.ts";
 import { breakwaterArms } from "../scene/city/harbor-plan.ts";
@@ -18,7 +19,7 @@ const duration = (seconds:number) => Math.floor(seconds/3600)+" h "+Math.floor(s
 type Clock = (seconds:number) => string;
 function interval(span:ChartSpan, until:number, clock:Clock) {
   const end = Math.min(span.end,until);
-  const minutes = Number(((end-span.start)/60).toFixed(2));
+  const minutes = roundMeasurement(roundMeasurement(end-span.start)/60);
   return names[span.stage]+" · "+clock(span.start)+"–"+clock(end)+" · "+minutes+" min";
 }
 function outline(points:readonly (readonly [number,number])[]) {
@@ -33,7 +34,7 @@ const Coast = memo(function Coast({land}:{land:ReturnType<typeof destination>|nu
     <path d={outline([land.shore,land.pier])} stroke="#899a95" strokeWidth="3"/></>}
   </g>;
 });
-function RouteMap({sleep,time,selected,spans,clock,land}:{
+export function RouteMap({sleep,time,selected,spans,clock,land}:{
   sleep:DaySleepVoyage; time:number; selected?:ChartSpan; spans:readonly ChartSpan[]; clock:Clock; land:ReturnType<typeof destination>|null;
 }){
   const {session}=sleep;
@@ -53,7 +54,7 @@ function RouteMap({sleep,time,selected,spans,clock,land}:{
       <circle r="7.5" fill="white" stroke="var(--ink)"/><path d="M-4-2.5H1L5 0 1 2.5H-4Z" fill="#a8513b"/></g>
   </svg><div className="map-key"><span>Harbor</span><span>Outer reef</span>{land&&<span>Sleep island</span>}</div></div>;
 }
-function Timeline({until,chosen,pick,spans,clock,total,hours}:{
+export function Timeline({until,chosen,pick,spans,clock,total,hours}:{
   until:number; chosen:number|null; pick:(index:number)=>void; spans:readonly ChartSpan[]; clock:Clock; total:number; hours:number[];
 }){
   const [hover,setHover]=useState<number|null>(null),[focus,setFocus]=useState<number|null>(null);
@@ -118,9 +119,10 @@ export function VoyageChart({sleep,time,close}:{sleep:DaySleepVoyage;time:number
   },[]);
   const seconds:Record<SleepStage,number>={LIGHT:0,DEEP:0,REM:0,AWAKE:0,ASLEEP:0,RESTLESS:0,UNKNOWN:0};
   for(const s of spans)seconds[s.stage]+=Math.max(0,Math.min(until,s.end)-s.start);
-  const asleep=stages.reduce((sum,s)=>sum+seconds[s],0),wakes=spans.filter(s=>s.stage==="AWAKE" && s.start<until);
+  for(const stage of Object.keys(seconds) as SleepStage[])seconds[stage]=roundMeasurement(seconds[stage]);
+  const asleep=roundMeasurement(stages.reduce((sum,s)=>sum+seconds[s],0)),wakes=spans.filter(s=>s.stage==="AWAKE" && s.start<until);
   const legend=stages.filter(s=>s!=="ASLEEP"||seconds.ASLEEP>0);
-  const share=(s:SleepStage)=>(asleep?seconds[s]*100/asleep:0).toFixed(1)+"%";
+  const share=(s:SleepStage)=>roundMeasurement(asleep?seconds[s]*100/asleep:0).toFixed(2)+"%";
   return <aside ref={panel} aria-label="Sleep voyage" className="voyage-chart"><div>
     <header className="head"><div><p className="eyebrow">Sleep voyage</p><h2 className="title">{session.id.startsWith("synthetic-")?"Night of ":""}{date(0)}</h2>
       <p className="meta">{clock(0)} → {clock(total)} {date(0) !== date(total) && !session.id.startsWith("synthetic-") ? date(total) : weekday(total)} · {timeZone}</p></div>

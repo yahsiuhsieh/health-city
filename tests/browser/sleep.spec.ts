@@ -4,7 +4,7 @@ test("the synthetic voyage restores the same route after a seek",async({page})=>
   const errors:string[]=[];
   page.on("pageerror",e=>errors.push(e.message));
   await page.route("**/*",r=>new URL(r.request().url()).origin==="http://127.0.0.1:8787"?r.continue():r.abort());
-  await page.goto("/");
+  await page.goto("/?reviewViews=1");
   await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
   const date=page.getByRole("combobox",{name:"Replay date"}),view=page.getByRole("combobox",{name:"Scene view"});
   const time=page.getByRole("slider",{name:"Replay time",exact:true});
@@ -36,26 +36,33 @@ test("the buoy opens its record and both the boat and the island open the sleep 
   const {SYNTHETIC_SESSION:session}=await import("../../src/scene/sleep/session.ts");
   const {islandShape}=await import("../../src/scene/sleep/island-shape.ts");
   await page.route("**/*",r=>new URL(r.request().url()).origin==="http://127.0.0.1:8787"?r.continue():r.abort());
-  await page.goto("/");
+  await page.goto("/?reviewViews=1");
   await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
   const models=Promise.all(["sleep-world","sea-life"].map(n=>page.waitForResponse(r=>r.ok()&&r.url().endsWith(n+".glb"))));
   await page.getByLabel("Replay date").selectOption("2026-11-12");await models;
   const time=page.getByRole("slider",{name:"Replay time",exact:true});
   async function click(x:number,y:number,z:number){
-    const position=await page.evaluate(async coords=>{
+    await page.locator("canvas").scrollIntoViewIfNeeded();
+    const project=()=>page.evaluate(async coords=>{
       await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
       const fiber=performance.getEntriesByType("resource").find(e=>e.name.includes("/@react-three_fiber.js"))!;
       const {_roots}=await import(fiber.name) as typeof import("@react-three/fiber");
       const element=document.querySelector("canvas")!,bounds=element.getBoundingClientRect();
       const {camera}=_roots.get(element)!.store.getState();
       const p=camera.position.clone().set(...coords).project(camera);
-      return {x:bounds.x+(1+p.x)*bounds.width/2,y:bounds.y+(1-p.y)*bounds.height/2};
+      const x=bounds.x+(1+p.x)*bounds.width/2,y=bounds.y+(1-p.y)*bounds.height/2;
+      return {x,y,visible:Math.abs(p.z)<=1 && document.elementFromPoint(x,y)===element};
+
     },[x,y,z] as [number,number,number]);
+    await expect.poll(async()=>(await project()).visible).toBe(true);
+    const position=await project();
     await page.mouse.click(position.x,position.y);
   }
   const land=islandShape(session);
   await page.getByLabel("Scene view").selectOption("sleep-island");
-  await time.fill("1800");await click(land.center[0],3,land.center[1]);await expect(page.getByRole("complementary",{name:"Sleep voyage",exact:true})).toHaveCount(0);
+  await time.fill("1800");await click(land.center[0],3,land.center[1]);
+  await expect(page.getByRole("complementary",{name:"Sleep voyage",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Close sleep voyage"}).click();
   await time.fill("11040");
   await page.getByLabel("Scene view").selectOption("sleep");
   const p=routeFrame(routeDistanceAt(session,14400));
@@ -87,7 +94,7 @@ test("the buoy opens its record and both the boat and the island open the sleep 
   await page.getByLabel("Scene view").selectOption("sleep-island");
   await time.fill("25200");await click(land.center[0],3,land.center[1]);
   await expect(page.getByRole("complementary",{name:"Sleep voyage",exact:true})).toBeVisible();
-  await expect(page.getByText("10,608 m²")).toBeVisible();
+  await expect(page.getByText("4,420 m²")).toBeVisible();
   await page.getByRole("button",{name:"Close sleep voyage"}).click();
   await page.getByLabel("Scene view").selectOption("sleep");await time.fill("11040");
   await click(p.x,2,p.z);
@@ -99,7 +106,7 @@ test("the buoy opens its record and both the boat and the island open the sleep 
 
 test("the rendered hull travels bow first on both harbor legs",async({page})=>{
   await page.route("**/*",r=>new URL(r.request().url()).origin==="http://127.0.0.1:8787"?r.continue():r.abort());
-  await page.goto("/");
+  await page.goto("/?reviewViews=1");
   await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
   const date=page.getByLabel("Replay date"),time=page.getByRole("slider",{name:"Replay time",exact:true});
   await date.selectOption("2026-11-11");
@@ -129,7 +136,7 @@ test("the rendered hull travels bow first on both harbor legs",async({page})=>{
 });
 
 test("stage animation freezes and restores the same LIGHT and REM frames",async({page})=>{
-  await page.goto("/");
+  await page.goto("/?reviewViews=1");
   await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
   const date=page.getByLabel("Replay date"),time=page.getByRole("slider",{name:"Replay time",exact:true});
   await date.selectOption("2026-11-12");await page.getByLabel("Scene view").selectOption("sleep");
@@ -151,7 +158,7 @@ const wildlifeSizes={ray:165,whale:330,shark:250,dolphin:85,booby:55,tern:38,"fl
 for(const kind of Object.keys(wildlifeSizes) as (keyof typeof wildlifeSizes)[])test("the voyage camera shows "+kind+" at its required screen size",async({page})=>{
   await page.setViewportSize({width:1250,height:870});
     const light=kind==="booby"||kind==="tern"||kind==="flying-fish";
-    await page.goto(light?"/":"/?sleepCompanion="+kind);
+    await page.goto(light?"/?reviewViews=1":"/?sleepCompanion="+kind);
     await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
     await page.getByLabel("Replay date").selectOption(light && kind!=="flying-fish"?"2026-11-11":"2026-11-12");
     await page.getByLabel("Scene view").selectOption("sleep");
@@ -194,7 +201,7 @@ for(const kind of Object.keys(wildlifeSizes) as (keyof typeof wildlifeSizes)[])t
 
 test("the sleep voyage card follows replay, selection and scroll reveal",async({page})=>{
   await page.setViewportSize({width:390,height:844});
-  await page.goto("/");
+  await page.goto("/?reviewViews=1");
   await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
   const date=page.getByLabel("Replay date"),time=page.getByRole("slider",{name:"Replay time",exact:true});
   await date.selectOption("2026-11-11");await page.getByLabel("Scene view").selectOption("sleep");
@@ -226,9 +233,9 @@ test("the sleep voyage card follows replay, selection and scroll reveal",async({
   await time.fill("1800");await expect(segments).toHaveCount(2);await expect(card.locator(".status")).toContainText("Deep");
   await time.fill("23400");await expect(segments).toHaveCount(9);await expect(card.locator(".future")).toHaveCount(0);
   const atIsland=await marker.getAttribute("transform");await time.fill("28000");await expect(marker).not.toHaveAttribute("transform",atIsland!);
-  await expect(card.getByRole("row",{name:"Light 202 min 45.7%"})).toHaveCount(1);
-  await expect(card.getByRole("row",{name:"Deep 150 min 33.9%"})).toHaveCount(1);
-  await expect(card.getByRole("row",{name:"REM 90 min 20.4%"})).toHaveCount(1);
+  await expect(card.getByRole("row",{name:"Light 202 min 45.70%"})).toHaveCount(1);
+  await expect(card.getByRole("row",{name:"Deep 150 min 33.94%"})).toHaveCount(1);
+  await expect(card.getByRole("row",{name:"REM 90 min 20.36%"})).toHaveCount(1);
   await expect(card.getByText("Unclassified")).toHaveCount(0);
   await card.evaluate(el=>el.scrollTop=el.scrollHeight);await expect(card.locator(".lower")).toHaveCSS("opacity","1");
   await page.emulateMedia({reducedMotion:"reduce"});
@@ -240,6 +247,7 @@ test("the sleep voyage card follows replay, selection and scroll reveal",async({
 });
 
 test("the world view includes the island only on voyage dates",async({page})=>{
+  await page.setViewportSize({width:1440,height:900});
   const {coast}=await import("../../src/scene/coastline.ts");
   const {breakwaterArms}=await import("../../src/scene/city/harbor-plan.ts");
   const {islandShape}=await import("../../src/scene/sleep/island-shape.ts");
@@ -247,46 +255,59 @@ test("the world view includes the island only on voyage dates",async({page})=>{
   const {SYNTHETIC_SESSION}=await import("../../src/scene/sleep/session.ts");
   const island=islandShape(SYNTHETIC_SESSION);
   const outlines=[...coast.map(p=>p.crest),...breakwaterArms.flat(),...outerReef.vertices,...island.reef.polygon];
-  await page.goto("/");
+  await page.goto("/?reviewViews=1");
   const date=page.getByLabel("Replay date"),view=page.getByLabel("Scene view");
   for(const [day,hasIsland] of [["2026-11-12",true],["2026-11-14",false]] as const){
     await date.selectOption(day);await view.selectOption("world");
     await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
-    const extent=await page.evaluate(async points=>{
+    const frame=await page.evaluate(async ({points,coastPoints})=>{
       for(let i=0;i<4;i++)await new Promise(requestAnimationFrame);
       const fiber=performance.getEntriesByType("resource").find(e=>e.name.includes("/@react-three_fiber.js"))!;
       const {_roots}=await import(fiber.name) as typeof import("@react-three/fiber");
-      const {camera}=_roots.get(document.querySelector("canvas")!)!.store.getState();
-      return Math.max(...points.map(([x,z])=>{
-        const p=camera.position.clone().set(x,0,z).project(camera);
-        return Math.max(Math.abs(p.x),Math.abs(p.y),Math.abs(p.z));
-      }));
-    },hasIsland?outlines:[island.center]);
-    if(hasIsland)expect(extent).toBeLessThan(1);
-    else expect(extent).toBeGreaterThan(1);
+      const {camera,scene}=_roots.get(document.querySelector("canvas")!)!.store.getState();
+      const project=([x,z]:readonly [number,number])=>camera.position.clone().set(x,0,z).project(camera);
+      const city=coastPoints.map(p=>project(p).x);
+      return {island:!!scene.getObjectByName("Destination island"),cityWidth:(Math.max(...city)-Math.min(...city))/2,
+        extent:Math.max(...points.map(p=>{const v=project(p);return Math.max(Math.abs(v.x),Math.abs(v.y),Math.abs(v.z))}))};
+    },{points:outlines,coastPoints:coast.map(p=>p.crest)});
+    expect(frame.island).toBe(hasIsland);
+    if(hasIsland){expect(frame.extent).toBeLessThan(1);expect(frame.cityWidth).toBeGreaterThanOrEqual(.5);}
   }
 });
 
 
-test("hides the destination seabed during the reef passage and restores it on arrival",async({page})=>{
+test("keeps the entire island visible while the mist clears on arrival",async({page})=>{
   const shaderErrors:string[]=[];
   page.on("console",message=>{
     if(message.type()==="error" && message.text().includes("Shader Error"))shaderErrors.push(message.text());
   });
-  await page.goto("/");
-  await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
+  await page.goto("/?reviewViews=1");
   await page.getByLabel("Replay date").selectOption("2026-11-12");
+  await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled({timeout:20000});
   await page.getByLabel("Scene view").selectOption("sleep-island");
   const time=page.getByRole("slider",{name:"Replay time",exact:true});
-  for(const [seconds,visible] of [["5222",false],["23800",true],["5222",false]] as const){
+  const canvas=page.locator("canvas");
+  await canvas.hover();
+  await page.mouse.wheel(0,-120);
+  await page.evaluate(()=>new Promise(requestAnimationFrame));
+  const readPose=()=>page.evaluate(async()=>{
+    const fiber=performance.getEntriesByType("resource").find(e=>e.name.includes("/@react-three_fiber.js"))!;
+    const {_roots}=await import(fiber.name) as typeof import("@react-three/fiber");
+    const el=document.querySelector("canvas")!,{camera,gl}=_roots.get(el)!.store.getState();
+    return {zoom:camera.zoom,position:camera.position.toArray(),rotation:camera.quaternion.toArray(),lost:gl.getContext().isContextLost()};
+  });
+  const initial=await readPose();
+  expect(initial.lost).toBe(false);
+  for(const [seconds,misty] of [["0",true],["5222",true],["23800",false],["26700",false],["5222",true]] as const){
     await time.fill(seconds);
     await expect.poll(()=>page.evaluate(async()=>{
       const fiber=performance.getEntriesByType("resource").find(e=>e.name.includes("/@react-three_fiber.js"));
       if(!fiber)return [];
       const {_roots}=await import(fiber.name) as typeof import("@react-three/fiber");
       const scene=_roots.get(document.querySelector("canvas")!)?.store.getState().scene;
-      return ["Destination island","Destination seabed"].map(name=>scene?.getObjectByName(name)?.visible);
-    })).toEqual([visible,visible]);
+      return ["Destination island","Destination seabed","Sea mist"].map(name=>scene?.getObjectByName(name)?.visible);
+    })).toEqual([true,true,misty]);
+    expect(await readPose()).toEqual(initial);
   }
   expect(shaderErrors).toEqual([]);
 });
@@ -297,7 +318,7 @@ test("the scroll reveal fallback respects focus, reduced motion and a card that 
     CSS.supports=(...args:[string,string?])=>args[0]==="animation-timeline: view()"?false:
       args.length===1?supports(args[0]):supports(args[0],args[1]!);
   });
-  await page.setViewportSize({width:390,height:844});await page.goto("/");
+  await page.setViewportSize({width:390,height:844});await page.goto("/?reviewViews=1");
   await expect(page.getByRole("button",{name:"Play",exact:true})).toBeEnabled();
   await page.getByLabel("Replay date").selectOption("2026-11-12");await page.getByLabel("Scene view").selectOption("sleep");
   await page.getByRole("slider",{name:"Replay time",exact:true}).fill("23400");

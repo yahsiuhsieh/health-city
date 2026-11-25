@@ -9,7 +9,7 @@ A Worker flag enables manual day replay for Google Health records. Automatic syn
 
 The local homepage now uses React, React Three Fiber, Three.js, and Vite.
 It loads one reusable working boat from `public/models/city-working-boat.glb`.
-The 20 m working boat and the 58 m freighter share one harbor. The freighter uses the cargo berth with its crane, forklift, and flatbed truck.
+The 20 m working boat uses the east harbor. Fishing boats tie up beside the fish market.
 A street graph connects Ridge Road, Market Avenue, the civic plaza, and the waterfront. Permanent mid-rise buildings share blocks with 30 fixed HRV plots.
 The adjacent skyline uses five tower models: Glass spire, Deco crown, Concrete terraces, Ribbon tower, and Brick crown.
 Use **Scene view** to open the skyline, harbor, Market crossing, Market Avenue, or an individual design. Drag to orbit. Right-drag to pan. Scroll to zoom.
@@ -113,7 +113,7 @@ At 12:10, the crane turns toward shore. At 12:30, the pallet rests on the flatbe
 The crane follows replay time. The parked forklift and flatbed are fixed berth equipment. Neither contributes to the calorie-driven traffic count.
 A separate gate connects the cargo apron to the return street. The public walk passes outside the yard fence.
 
-`scripts/build-cargo-berth.mjs` generates `public/models/cargo-berth.glb` from project-local geometry.
+`scripts/build-cargo-berth.mjs` generates `public/models/fish-market.glb` from project-local geometry.
 The turntable, hoist lines, and slung pallet have separate pivots. Work lamps share one material.
 The earlier harbor house model and its editable source remain available as a design study.
 
@@ -421,7 +421,7 @@ These behavioral checks do not establish visual acceptance or a performance budg
 - `src/core/representative-day.ts` defines synthetic dates, five-minute step and energy data, preview counts, and boat poses.
 - `src/core/inspection-pages.ts` defines inspection tables and combines normalized continuation results.
 - `src/scene/BoatScene.tsx` composes the harbor assets, water, and lighting, and manages camera controls.
-- `src/scene/CargoBerth.tsx` poses the crane and mooring lines and controls the work lamps.
+- `src/scene/FishMarket.tsx` loads the market model and attaches the working boat’s mooring lines.
 - `src/scene/HarborWalk.tsx` positions and poses the walking figures from the replay clock and step totals.
 - `src/scene/harbor-layout.ts` defines the landing and waterfront coordinates.
 - `src/scene/HarborBlock.tsx` builds the quays, piers, and breakwater.
@@ -432,7 +432,7 @@ These behavioral checks do not establish visual acceptance or a performance budg
 - `scripts/build-boat.mjs` supplies the provisional editable model source.
 - `scripts/build-building.mjs` supplies the editable building source and combines static geometry by material.
 - `public/models/city-working-boat.glb` supplies the browser delivery asset.
-- `public/models/cargo-berth.glb` supplies the cargo equipment and transit shed.
+- `public/models/fish-market.glb` supplies the market, harbor office, and quay equipment.
 - `public/_headers` defines security headers for static resources.
 - `vite.config.ts` separates browser entries from the Worker build through the Cloudflare plugin.
 - `vitest.config.ts` selects source tests without loading the development server configuration.

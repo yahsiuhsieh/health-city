@@ -74,7 +74,7 @@ test("only emerged skin reaches the main pass and submerged skin reaches refract
   await page.getByLabel("Replay date").selectOption("2026-11-12");
   await page.getByLabel("Scene view").selectOption("sleep");
   const time=page.getByRole("slider",{name:"Replay time",exact:true});
-  const shot=async(layer:number)=>{
+  const shot=async(layer:number,clip?:{x:number;y:number;width:number;height:number})=>{
     await page.evaluate(async layer=>{
       const fiber=performance.getEntriesByType("resource").find(e=>e.name.includes("/@react-three_fiber.js"))!;
       const {_roots}=await import(fiber.name) as typeof import("@react-three/fiber");
@@ -87,6 +87,7 @@ test("only emerged skin reaches the main pass and submerged skin reaches refract
       whale.traverse(obj=>obj.layers.set(layer));
       for(let i=0;i<4;i++)await new Promise(requestAnimationFrame);
     },layer);
+    if(clip)return page.screenshot({clip});
     return page.locator("canvas").screenshot({style:".world > :not(.scene-canvas){visibility:hidden!important}"});
   };
   await time.fill("6450");
@@ -96,4 +97,19 @@ test("only emerged skin reaches the main pass and submerged skin reaches refract
   await time.fill("6333");
   const breach=await shot(0);
   expect((await shot(2)).equals(breach)).toBe(false);
+
+  await time.fill("19700");
+  await shot(0);
+  const torso=await page.evaluate(async()=>{
+    const fiber=performance.getEntriesByType("resource").find(e=>e.name.includes("/@react-three_fiber.js"))!;
+    const {_roots}=await import(fiber.name) as typeof import("@react-three/fiber");
+    const canvas=document.querySelector("canvas")!,bounds=canvas.getBoundingClientRect();
+    const {camera,scene}=_roots.get(canvas)!.store.getState();
+    const whale=scene.getObjectByName("Stage wildlife")!.getObjectByName("whale")!;
+    const center=whale.getWorldPosition(camera.position.clone()).project(camera);
+    return {x:Math.round(bounds.left+(1+center.x)*bounds.width/2)-3,
+      y:Math.round(bounds.top+(1-center.y)*bounds.height/2)-3,width:6,height:6};
+  });
+  const submergedTorso=await shot(2,torso);
+  expect((await shot(3,torso)).equals(submergedTorso)).toBe(false);
 });

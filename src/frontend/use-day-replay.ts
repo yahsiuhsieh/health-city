@@ -9,13 +9,13 @@ type LoadState =
   | { status: "idle" | "loading" | "sign-in" | "renew" | "error" }
   | { status: "ready"; rmssdMs: number | null; recorded?: RecordedReplay };
 
-export function useDayReplay(source: HrvSource, day: ReplayDay) {
+export function useDayReplay(source: HrvSource, day: ReplayDay, auto=false) {
   const example = source === "synthetic";
   const [result, setResult] = useState<{ day: ReplayDay; state: LoadState }>();
   const [googleHealthEnabled, setGoogleHealthEnabled] = useState(false);
   const active = useRef<AbortController | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh=false) => {
     active.current?.abort();
     const request = new AbortController();
     active.current = request;
@@ -27,7 +27,7 @@ export function useDayReplay(source: HrvSource, day: ReplayDay) {
       const { date, zone, durationSeconds } = day;
       const response = await fetch(example ? DAILY_HRV_PATH + "?" + new URLSearchParams({ date }) : RECORDED_REPLAY_PATH, {
         method: example ? "GET" : "POST",
-        ...(example ? {} : { body: new URLSearchParams({ date, timeZone: zone }) }),
+        ...(example ? {} : { body: new URLSearchParams({ date, timeZone: zone,...(refresh?{refresh:"1"}:{}) }) }),
         signal: request.signal,
         redirect: "error",
         cache: "no-store",
@@ -53,9 +53,9 @@ export function useDayReplay(source: HrvSource, day: ReplayDay) {
   }, [day, example, source]);
 
   useEffect(() => {
-    if (example) void load();
-    return () => active.current?.abort();
-  }, [example, load]);
+    const timer=example||auto?setTimeout(()=>void load(),example?0:300):undefined;
+    return () => {clearTimeout(timer);active.current?.abort();};
+  }, [example,auto,load]);
 
   const state: LoadState = result?.day === day ? result.state : { status: example ? "loading" : "idle" };
   return { state, load, googleHealthEnabled };

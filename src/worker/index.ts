@@ -8,7 +8,7 @@ import { CHECK_CSS } from "./health-check.ts";
 const handleAuth = createAuthHandler();
 
 export default {
-  async fetch(request: Request, env: Env = {}): Promise<Response> {
+  async fetch(request: Request, env: Env = {},ctx?:{waitUntil(task:Promise<void>):void}): Promise<Response> {
     const url = new URL(request.url);
     if ((url.pathname === "/" || url.pathname === "/index.html") && env.ASSETS) {
       if (request.method !== "GET" && request.method !== "HEAD") return respond("Method not allowed.", 405, { Allow: "GET, HEAD" });
@@ -49,7 +49,7 @@ export default {
       return respondJson(result);
     }
     try {
-      return await handleAuth(request, env);
+      return await handleAuth(request, env,ctx?.waitUntil.bind(ctx));
     } catch {
       return respond("Service temporarily unavailable. Try again later.", 503);
     }

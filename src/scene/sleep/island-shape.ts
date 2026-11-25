@@ -3,7 +3,7 @@ import { seededRandom } from "./random.ts";
 import { JETTY_HEAD } from "./route.ts";
 import { asleepSeconds,type SleepSession,type SleepStage } from "./session.ts";
 
-export const ISLAND_M2_PER_ASLEEP_MINUTE=24;
+export const ISLAND_M2_PER_ASLEEP_MINUTE=10;
 const tau=2*Math.PI;
 export const clamp01=(u:number)=>Math.max(0,Math.min(1,u));
 const smooth=(u:number)=>u*u*(3-2*u);
@@ -73,15 +73,15 @@ export function islandNoisePoint(x:number,z:number):Point{
 }
 export function islandShape(session:SleepSession,minutes=asleepSeconds(session)/60){
   if(!Number.isFinite(minutes)||minutes<=0)throw new RangeError("Island area requires positive asleep time.");
-  const area=minutes*ISLAND_M2_PER_ASLEEP_MINUTE,platformArea=Math.max(15000,area*2.5);
+  const area=minutes*ISLAND_M2_PER_ASLEEP_MINUTE,platformArea=Math.max(2500,area*2.5);
   const random=seededRandom(session.id,"reef-platform"),seed=random()*512;
-  const reefAspect=1.85,cayAspect=1.7;
+  const reefAspect=1/1.65,cayAspect=1/1.6;
   const reefLocal=outline(platformArea,reefAspect,seed,false);
   const top=Math.max(...reefLocal.map(p=>p[1]));
   const reefCenter:Point=[JETTY_HEAD[0]-12,JETTY_HEAD[1]-13-top];
   const reef=contour(reefLocal,reefCenter,reefAspect);
   const cayLocal=outline(area,cayAspect,seed+62,true);
-  const center:Point=[reefCenter[0]+.32*Math.sqrt(area/Math.PI),reef.bounds.top-26-.10*Math.sqrt(area/Math.PI)-Math.max(...cayLocal.map(p=>p[1]))];
+  const center:Point=[reefCenter[0]+.06*Math.sqrt(area/Math.PI),Math.min(reefCenter[1], reef.bounds.top-25.1-Math.max(...cayLocal.map(p=>p[1])))];
   const cay=contour(cayLocal,center,cayAspect);
   // Find the beach on the jetty axis, including the sand spit on small cays.
   const shoreX=Math.max(cay.bounds.left+.05*(center[0]-cay.bounds.left),Math.min(center[0],JETTY_HEAD[0]));

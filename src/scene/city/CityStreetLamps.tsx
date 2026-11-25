@@ -1,3 +1,4 @@
+import {cityLight} from "../lighting.ts";
 import { useOverview } from "./OverviewModel.tsx";
 import { useFrame } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
@@ -64,6 +65,7 @@ function NightLighting({sites,focus}:{sites:LampSite[];focus:RefObject<Vector3>}
 }
 
 export function CityStreetLamps({sites,night,focus}:{sites:LampSite[];night:boolean;focus:RefObject<Vector3>}) {
+  const illumination=(night?cityLight.night:cityLight.day).streetLamps;
   const {housing,lens}=useLampFixture();
   const poles=useRef<InstancedMesh>(null), lenses=useRef<InstancedMesh>(null);
   useLayoutEffect(()=>{
@@ -86,8 +88,8 @@ export function CityStreetLamps({sites,night,focus}:{sites:LampSite[];night:bool
       <meshStandardMaterial color="#43514c" roughness={.76}/>
     </instancedMesh>
     <instancedMesh ref={lenses} args={[lens,undefined,sites.length]} layers-mask={1<<DRY_LAYER}>
-      <meshStandardMaterial color="#e0cbaa" emissive={lampColor} emissiveIntensity={night?2:0}/>
+      <meshStandardMaterial color="#e0cbaa" emissive={lampColor} emissiveIntensity={2*illumination}/>
     </instancedMesh>
-    {night&&<NightLighting sites={sites} focus={focus}/>}
+    {illumination>0&&<NightLighting sites={sites} focus={focus}/>}
   </group>;
 }

@@ -1,3 +1,4 @@
+import { validRhrRecords, type RhrRecord } from "./rhr.ts";
 import { Temporal } from "@js-temporal/polyfill";
 import { SLEEP_STAGES, elapsedSeconds, sleepInstant } from "./sleep-replay.ts";
 import type { SleepSession, SleepSpan } from "./sleep-replay.ts";
@@ -12,6 +13,7 @@ export type RecordedReplay = {
   timeZone: string;
   heartRate: ReplayStream<(number | null)[]>;
   cachedHeartRate?: boolean;
+  rhr: ReplayStream<RhrRecord[]>;
   hrv: ReplayStream<number | null>;
   calories: ReplayStream<(number | null)[]>;
   steps: ReplayStream<(number | null)[]>;
@@ -71,7 +73,7 @@ export function parseRecordedReplay(value: unknown, date: string, timeZone: stri
     (typeof item === "number" && deriveHrvSkyline(item).status === "available")) ||
     !validStream(calories, validTotals(false)) || !validStream(steps, validTotals(true))) return null;
   const {heartRate, sleep} = value;
-  return { date, timeZone, hrv, calories, steps, cachedHeartRate:value.cachedHeartRate === true,
+  return { date, timeZone, rhr: validStream(value.rhr, validRhrRecords) ? value.rhr : {status:"failed"}, hrv, calories, steps, cachedHeartRate:value.cachedHeartRate === true,
     heartRate: validStream(heartRate, validTotals(false)) ? heartRate : {status:"failed"},
     sleep: validStream(sleep, (items): items is SleepSession[] => validSleep(items, date, timeZone)) ? sleep : {status:"failed"} };
 }

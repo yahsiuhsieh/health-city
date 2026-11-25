@@ -8,8 +8,3 @@ export const palette = {
   downtown: ["#d9cfbd", "#c9b89c", "#b9a690", "#a8b2ad"],
   canopy: ["#6f8f55", "#7f9c5e", "#5e7f4c"], trunk: "#6a5440",
 } as const;
-
-export const cityLight = {
-  day: { sun: "#fff1d6", intensity: 3, sky: "#dce8ef", ground: "#8a8f7f", fill: 1.2, air: "#cfe0ea" },
-  night: { sun: "#b5cfe5", intensity: .8, sky: "#9fb6c8", ground: "#2f4448", fill: .9, air: "#1f3541" },
-};

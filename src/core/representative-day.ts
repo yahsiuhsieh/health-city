@@ -2,10 +2,19 @@ import { Temporal } from "@js-temporal/polyfill";
 import { REPLAY_ZONE } from "./daily-hrv.ts";
 
 import { REPLAY_INTERVAL_SECONDS as INTERVAL_SECONDS } from "./recorded-replay.ts";
+import { roundMeasurement } from "./measurement.ts";
 export const STEPS_PER_FIGURE = 80;
 export const HARBOR_FIGURE_LIMIT = 6;
 export const KCAL_PER_MINUTE_PER_VEHICLE = 1.2;
 export const HARBOR_VEHICLE_LIMIT = 4;
+
+const syntheticRhr: Record<string, { bpm: number; method: string | null }[]> = {
+  "2026-11-15": [{ bpm: 58, method: "WITH_SLEEP" }],
+  "2026-11-14": [],
+  "2026-11-13": [{ bpm: 60, method: "WITH_SLEEP" }, { bpm: 63, method: "ONLY_WITH_AWAKE_DATA" }],
+  "2026-11-12": [{ bpm: 84, method: null }],
+  "2026-11-11": [{ bpm: 56, method: "WITH_SLEEP" }],
+};
 
 type SyntheticPeriod = readonly [startHour: number, endHour: number, value: number | null];
 
@@ -24,18 +33,15 @@ function replayDay(date: string, observations?: { steps: readonly SyntheticPerio
   const intervalCount = Math.ceil(durationSeconds / INTERVAL_SECONDS);
   return {
     date,
+    rhr: observations ? syntheticRhr[date] ?? [] : [],
     dateLabel: localDate.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
     zone,
     durationSeconds,
-    intervalLabel(seconds:number) {
-      const local=start.add({seconds:Math.min(durationSeconds,Math.floor(seconds))});
-      return local.toPlainTime().toString({smallestUnit:"minute"})+" "+local.offset;
-    },
     heartMeans:Array.from({length:intervalCount},(_,i)=>{
       if (!observations || (i>=120 && i<(date.endsWith("12")?170:124))) return null;
       const level=date.endsWith("13") ? 1 : 6;
-      return 68+level*Math.sin(i*.12)+level*Math.sin(i*.045)+
-        (date.endsWith("13")?3:62)*Math.exp(-((i-193)**2)/60);
+      return roundMeasurement(68+level*Math.sin(i*.12)+level*Math.sin(i*.045)+
+        (date.endsWith("13")?3:62)*Math.exp(-((i-193)**2)/60));
     }),
     stepTotals: Array.from({ length: intervalCount }, (_, index) => observations ? sample(observations.steps, 0, index) : null),
     calorieTotals: Array.from({ length: intervalCount }, (_, index) => observations ? sample(observations.calories, 5.5, index) : null),
@@ -91,8 +97,8 @@ export function stepsAt(day: ReplayDay, seconds: number) {
 
 export function trafficAt(day: ReplayDay, seconds: number) {
   const { index, startSeconds, endSeconds } = replayInterval(day, seconds);
-  const totalKcal = day.calorieTotals[index] ?? null;
-  const meanKcalPerMinute = totalKcal === null ? null : totalKcal / ((endSeconds - startSeconds) / 60);
+  const totalKcal = roundMeasurement(day.calorieTotals[index] ?? null);
+  const meanKcalPerMinute = totalKcal === null ? null : roundMeasurement(totalKcal / ((endSeconds - startSeconds) / 60));
   const vehicleCount = meanKcalPerMinute === null ? 0
     : Math.min(HARBOR_VEHICLE_LIMIT, Math.ceil(meanKcalPerMinute / KCAL_PER_MINUTE_PER_VEHICLE));
   return { totalKcal, meanKcalPerMinute, vehicleCount, startSeconds, endSeconds };

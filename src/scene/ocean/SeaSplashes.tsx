@@ -5,7 +5,6 @@ import {
   Object3D, PlaneGeometry, ShaderMaterial, SphereGeometry, Vector3,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { freighter } from "../port-layout.ts";
 import { berths } from "../HarborFleet.tsx";
 import { useOcean } from "./OceanEnvironment.tsx";
 import { TRANSPARENT_LAYER, WATER_LEVEL } from "./layers.ts";
@@ -61,7 +60,6 @@ export function SeaSplashes({hasVoyage,preview,night}:{hasVoyage:boolean;preview
   const region=useMemo(()=>{
     const paths=boatPathSamples(hasVoyage,preview);
     for(const berth of berths) paths.push(berth);
-    for(let dz=-freighter.length/2;dz<=freighter.length/2;dz++) paths.push({x:freighter.x,z:freighter.z+dz});
     const cells=new Map<string,SplashEvent[]>();
     return {paths,cells,lastTime:NaN,lastNight:night,events:[] as SplashEvent[],projection:new Matrix4(),previous:new Matrix4(),point:new Vector3(),direction:new Vector3()};
   },[hasVoyage,preview,ocean]);

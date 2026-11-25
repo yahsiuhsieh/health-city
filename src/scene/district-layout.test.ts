@@ -3,11 +3,12 @@ import { Box3, DataUtils, Raycaster, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { expect, it } from "vitest";
 import { coast,coastSegments,shorePanels } from "./coastline.ts";
+import {basinGeometry,damSite} from "./reservoir-basin.ts";
 import { buildSeabed } from "./ocean/seabed.ts";
 import { SKYLINE_PLOTS, TOWER_DESIGNS } from "./skyline-layout.ts";
 
 import { CITY_PLAN, permitsStreetTree, exerciseGardenSite, reservoirSite } from "./city/city-plan.data.ts";
-import { edgeCenterline, sections, walkNetwork } from "./city/street-graph.ts";
+import { edgeCenterline, sections, sidewalks, walkNetwork } from "./city/street-graph.ts";
 
 it("keeps the delivered towers inside their blocks and reserves their full width for planting", async () => {
   const bounds = await Promise.all(TOWER_DESIGNS.map(async design => {
@@ -44,6 +45,17 @@ it("exposes one roof surface above each tower floor",async()=>{
       }
     }
   }
+});
+
+it("leaves a planted setback between the entire reservoir bank and Valley Lane",()=>{
+  const bank=basinGeometry(null);
+  bank.rotateY(damSite.yaw).translate(damSite.x,damSite.y,damSite.z);
+  bank.computeBoundingBox();
+  const streetEdge=Math.max(...sidewalks(CITY_PLAN)
+    .filter(walk=>walk.edge==="ridge-north/valley"||walk.edge==="ridge-market/ridge-north")
+    .flatMap(walk=>walk.outside.map(([,z])=>z)));
+  expect(bank.boundingBox!.min.z-streetEdge).toBeGreaterThan(6);
+  bank.dispose();
 });
 
 it("keeps all thirty parcels off roads, footways and reserved sites",()=>{

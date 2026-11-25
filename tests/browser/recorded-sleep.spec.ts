@@ -26,7 +26,7 @@ test("recorded sleep drives the boat, chart, and island on the selected day", as
     }
     return route.continue();
   });
-  await page.goto("/");
+  await page.goto("/?reviewViews=1");
   await page.getByLabel("Replay source").selectOption("google-health");
   await page.getByRole("combobox",{name:"Scene view"}).selectOption("sleep");
   const date = page.getByLabel("Replay date"), slider = page.getByRole("slider",{name:"Replay time",exact:true});
@@ -76,7 +76,7 @@ test("recorded sleep drives the boat, chart, and island on the selected day", as
     return pose && awakePose ? Math.hypot(pose.x-awakePose.x,pose.z-awakePose.z) : Infinity;
   }).toBeLessThan(.05);
   await slider.fill("25200");
-  await expect(chart.getByText("11,304 m²")).toBeVisible();
+  await expect(chart.getByText("4,710 m²")).toBeVisible();
   await expect(chart.getByText(/1 awakening, 9 min/)).toBeVisible();
   await expect(chart.getByText("Recorded short awakenings")).toBeVisible();
 
@@ -84,7 +84,7 @@ test("recorded sleep drives the boat, chart, and island on the selected day", as
   await slider.fill("50400");
   await expect(chart.getByText(/Unclassified since 14:00/)).toBeVisible();
   await slider.fill("52200");
-  await expect(chart.getByText("720 m²")).toBeVisible();
+  await expect(chart.getByText("300 m²")).toBeVisible();
   await expect.poll(async () => {
     const state = await readScene();
     return state?.island && Math.hypot(state.x-JETTY_HEAD[0],state.z-(JETTY_HEAD[1]-JETTY_SLIDE)) < .1;

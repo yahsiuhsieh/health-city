@@ -49,7 +49,7 @@ describe("sleep route",()=>{
       expect(distance).toBeLessThanOrEqual(.5);
       expect(angle*180/Math.PI).toBeLessThanOrEqual(2);
       if(p.maneuver==="path" && last.maneuver==="path" && distance>.001 && angle>.000001)
-        expect(distance/angle).toBeGreaterThanOrEqual(p.x>171 ? 60 : 30);
+        expect(distance/angle).toBeGreaterThanOrEqual(p.z>-65 ? 60 : 30);
       last=p;
       minimum=Math.min(minimum,harborClearance(p,p.maneuver==="lateral").minimum);
     }
@@ -96,12 +96,12 @@ it("clears both reefs, enters the south jetty westbound, and returns on a separa
   const {islandShape}=await import("./island-shape.ts");
   const head=routeFrame(ROUTE_LENGTH-1), [mx,mz]=HARBOR_MOUTH.point;
   const direct=Math.hypot(head.x-mx,head.z-mz);
-  expect(direct).toBeGreaterThanOrEqual(450);expect(direct).toBeLessThanOrEqual(500);
-  expect(Math.abs(ROUTE_LENGTH-900)).toBeLessThanOrEqual(25);
+  expect(direct).toBeGreaterThanOrEqual(210);expect(direct).toBeLessThanOrEqual(250);
+  expect(Math.abs(ROUTE_LENGTH-400)).toBeLessThanOrEqual(20);
   expect(ROUTE_LENGTH/direct).toBeLessThanOrEqual(2);
   const obstacleOnDirect=Array.from({length:501},(_,i)=>outerReef.distance(mx+(head.x-mx)*i/500,mz+(head.z-mz)*i/500));
   expect(Math.min(...obstacleOnDirect)).toBeLessThan(0);
-  for(let s=0;s<=120;s+=.5){
+  for(let s=0;s<=11;s+=.5){
     const p=routeFrame(ROUTE_LENGTH-1-s);
     expect(p.x).toBeCloseTo(head.x+s,5);
     expect(p.z).toBeCloseTo(head.z,5);
@@ -110,13 +110,13 @@ it("clears both reefs, enters the south jetty westbound, and returns on a separa
   const returning=Array.from({length:3001},(_,i)=>returnFrame(i/5000)).filter(p=>p.x>mx);
   const islands=[5,20,60,180,442,720].map(m=>islandShape(session,m));
   for(const [i,p] of seaward.entries()){
-    expect(outerReef.distance(p.x,p.z)).toBeGreaterThanOrEqual(40);
-    if(S_MOUTH+i<ROUTE_LENGTH-121)for(const island of islands)
-      expect(island.reef.distance(p.x,p.z)).toBeGreaterThanOrEqual(40);
+    expect(outerReef.distance(p.x,p.z)).toBeGreaterThanOrEqual(12);
+    if(S_MOUTH+i<ROUTE_LENGTH-12)for(const island of islands)
+      expect(island.reef.distance(p.x,p.z)).toBeGreaterThanOrEqual(8);
   }
   function side(a:typeof head,b:typeof head,c:typeof head){return (b.x-a.x)*(c.z-a.z)-(b.z-a.z)*(c.x-a.x);}
   for(const [i,p] of returning.entries()){
-    expect(outerReef.distance(p.x,p.z)).toBeGreaterThanOrEqual(40);
+    expect(outerReef.distance(p.x,p.z)).toBeGreaterThanOrEqual(12);
     if(!i)continue;
     const q=returning[i-1]!;
     for(let k=1;k<seaward.length;k++){
@@ -176,7 +176,7 @@ it("keeps distinct shallow reef crests on a shared shelf with channels of differ
           channelDepth=bed.depthAt((a[0]+b[0])/2,(a[1]+b[1])/2);
         }
       }
-      expect(gap).toBeGreaterThan(10);
+      expect(gap).toBeGreaterThan(2);
       expect(channelDepth).toBeGreaterThan(depth);
       channelDepths.push(channelDepth);
     }
@@ -189,17 +189,17 @@ it("places the elongated outer reef east of the harbor mouth",async()=>{
   const {outerReef}=await import("./outer-reef.ts");
   const {HARBOR_MOUTH}=await import("../city/harbor-plan.ts");
   const east=outerReef.center[0]-HARBOR_MOUTH.point[0];
-  expect(east).toBeGreaterThanOrEqual(200);expect(east).toBeLessThanOrEqual(280);
+  expect(east).toBeGreaterThanOrEqual(8);expect(east).toBeLessThanOrEqual(20);
   let length=0,tx=0,tz=0;
   for(const a of outerReef.vertices)for(const b of outerReef.vertices){
     const dx=b[0]-a[0],dz=b[1]-a[1],distance=Math.hypot(dx,dz);
     if(distance>length){length=distance;tx=dx/distance;tz=dz/distance;}
   }
-  expect(length).toBeGreaterThanOrEqual(220);expect(length).toBeLessThanOrEqual(320);
+  expect(length).toBeGreaterThanOrEqual(44);expect(length).toBeLessThanOrEqual(65);
   expect(Math.abs(tz)).toBeGreaterThan(Math.abs(tx));
   const across=outerReef.vertices.map(([x,z])=>-tz*x+tx*z);
   const width=Math.max(...across)-Math.min(...across);
-  expect(width).toBeGreaterThanOrEqual(50);expect(width).toBeLessThanOrEqual(90);
+  expect(width).toBeGreaterThanOrEqual(10);expect(width).toBeLessThanOrEqual(20);
 });
 
 it("holds the heading at anchor, at the jetty, and at the berth",()=>{

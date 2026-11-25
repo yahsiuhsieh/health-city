@@ -20,6 +20,10 @@ _Avoid_: Lifetime accumulation in one garden, automatic growth as calendar time 
 **Replay**: A presentation of recorded changes within a day, in the original chronological order.
 _Avoid_: Prediction, live monitoring.
 
+**Focus target**: The scene location and framing for the overview or one metric. All objects for a metric use the same focus view.
+
+**Seven-day average**: The mean of available values for the seven civil dates before the selected date.
+
 **Day view**: The selected local calendar date and its replay interval. The interval runs from midnight to the next midnight, labeled 00:00–24:00.
 
 **Replay time zone**: The explicit time zone for the day-view calendar and intraday clock. It defaults to the home city's zone, independently of weather-location overrides.
@@ -30,7 +34,7 @@ _Avoid_: Separate sessions created solely because sleep crosses midnight.
 
 **Sleep overview**: A presentation of a complete sleep session, including its start and end dates. It is independent of the portion within the selected day view.
 
-**Sleep island**: An island for one complete sleep session. Land area is proportional to recorded time asleep.
+**Sleep island**: An island for one complete sleep session. Each recorded minute asleep adds 10 m² of land.
 Naps have separate islands. Awake segments do not add islands or land area.
 
 **Outer reef**: A fixed reef between the harbor and the sleep island. The voyage goes around it. It is not a sleep island.
@@ -95,6 +99,8 @@ _Avoid_: Accumulated daytime HRV, buildings earned through exercise, an overall 
 
 **RHR reservoir**: An inland reservoir behind a fixed dam. Its water level represents the selected date's daily resting heart rate and remains fixed during replay.
 _Avoid_: Instantaneous heart rate, rainfall, actual water supply, an overall health grade.
+
+**RHR gauge**: The scale on the intake tower. Its marks cover 40–80 bpm at 0.4 m per bpm.
 
 **Resting heart rate (RHR)**: The selected source's daily estimate of resting heart rate, in beats per minute. It is distinct from intraday heart-rate samples.
 _Avoid_: Instantaneous heart rate, an overall health or stress grade.

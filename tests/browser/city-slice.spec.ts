@@ -3,7 +3,7 @@ import {expect,test} from "@playwright/test";
 test("reviews both states of the two waterfront plots and restores the crossing after a seek",async({page})=>{
   await page.route("**/*",route=>new URL(route.request().url()).origin==="http://127.0.0.1:8787"?route.continue():route.abort());
   const errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
-  const models = Promise.all(["city-working-boat", "harbor-fleet", "cargo-berth"].map(name =>
+  const models = Promise.all(["city-working-boat", "harbor-fleet", "fish-market"].map(name =>
     page.waitForResponse(r => r.url().endsWith("/models/"+name+".glb") && r.ok())
   ));
   await page.goto("/?citySlice=1");
@@ -27,10 +27,10 @@ test("reviews both states of the two waterfront plots and restores the crossing 
   await view.selectOption("harbor");
   await expect(page.getByRole("heading",{name:"Working harbor"})).toBeVisible();
   const harbor = await frame();
-  await view.selectOption("cargo");
+  await view.selectOption("berth");
   expect((await frame()).equals(harbor)).toBe(false);
-  await page.getByRole("button",{name:"Inspect berth"}).click();
-  await expect(page.getByRole("heading",{name:"The cargo berth"})).toBeVisible();
+  await page.getByRole("button",{name:"Inspect boat"}).click();
+  await expect(page.getByRole("heading",{name:"The harbor boat"})).toBeVisible();
   await expect(time).toHaveValue("32745");
   expect(errors).toEqual([]);
 });

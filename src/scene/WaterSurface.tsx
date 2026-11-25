@@ -1,4 +1,4 @@
-import { cityLight } from "./city/palette.ts";
+import { cityLight } from "./lighting.ts";
 import { useEffect, useMemo, type RefObject } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
@@ -37,7 +37,7 @@ const fragmentShader = /* glsl */`
   uniform vec3 deepColor;
   uniform vec3 shallowTint;
   uniform float nightAmount;
-  uniform float oceanTime, reveal,uIslandReveal;
+  uniform float oceanTime, reveal;
   uniform vec3 skyColor, foamColor, fleckColor, harborTint;
   uniform sampler2D bedMap;
   uniform vec4 bedBounds;
@@ -89,16 +89,16 @@ const fragmentShader = /* glsl */`
       vec4 reef=texture2D(outerMap,(p-outerBounds.xy)/outerBounds.zw);
       if(reef.r<bank.r){bank=reef;fixedReef=true;}
     }
-    if(uIslandReveal>0. && all(greaterThanEqual(p,islandBounds.xy)) && all(lessThan(p,islandBounds.xy+islandBounds.zw))){
+    if(islandBounds.z>0. && all(greaterThanEqual(p,islandBounds.xy)) && all(lessThan(p,islandBounds.xy+islandBounds.zw))){
       vec4 island=texture2D(islandMap,(p-islandBounds.xy)/islandBounds.zw);
       if(island.r<bank.r){bank=island;fixedReef=false;}
     }
-    if(bank.b>.97) depth=max(depth,40.*bank.r*smoothstep(2.5,9.,40.*bank.r));
-    float cover=bank.b<=0.?1.:bank.b>.97?uIslandReveal:smoothstep(bank.b-.045,bank.b+.008,reveal);
+    float cover=bank.b<=0. || bank.b>.97?1.:smoothstep(bank.b-.045,bank.b+.008,reveal);
     vec3 water=deepColor;
     if (depth < ${shelfFade[1]}) {
       vec2 offsetUV=sampleUV+slope*.012*smoothstep(0.,1.5,depth);
-      if (viewZ(offsetUV)<=surfaceZ) sampleUV=offsetUV;
+      float offsetZ=viewZ(offsetUV);
+      if (offsetZ<=surfaceZ && abs(z-offsetZ)*viewDirection.y<.75) sampleUV=offsetUV;
       vec3 refracted=texture2D(sceneColor,sampleUV).rgb;
       float bedVisibility=1.-smoothstep(${shelfFade.join(",")},depth);
       vec3 transmittance=exp(-depth*vec3(${absorptionRates.join(",")}));
@@ -125,21 +125,21 @@ const fragmentShader = /* glsl */`
       water=mix(water,fleckColor,fleckAlpha);
     }
     float distance = bank.g*24.;
-    if (abs(distance) < 2.5 && (bank.b>.97?uIslandReveal>0.:bank.b<=reveal)) {
+    if (abs(distance) < 2.5 && (bank.b>.97 || bank.b<=reveal)) {
       vec2 wash = shoreWash(p,distance,oceanTime);
       float soft = wash.x*(1.-smoothstep(1.3,3.,depth))*mix(.85,.5,nightAmount);
       float contact = (1.-smoothstep(.05,.15,abs(distance)))*.25;
       float rockFoam = .4 * (1.-smoothstep(.04,.3,abs(distance)))*lace(p);
       float foam = bank.a > 1.5 ? rockFoam : mix(soft,contact,min(bank.a,1.));
-      water = mix(water,foamColor,foam*(bank.b>.97?uIslandReveal:1.));
+      water = mix(water,foamColor,foam);
     }
     if((bank.b>.97 || fixedReef) && bank.a>.01){
       vec2 crestWash=shoreWash(p,(1.-bank.a/3.)*1.6,oceanTime);
       float surf=bank.a/3.*(.18+.82*crestWash.x)*(.2+.8*lace(p));
-      water=mix(water,foamColor,surf*(fixedReef?1.:uIslandReveal));
+      water=mix(water,foamColor,surf);
     }
     float farDepth = -surfaceZ - ${CAMERA_DEPTH_OFFSET.toFixed(1)};
-    float softBeach = (1.-smoothstep(0.,1.,bank.a))*(bank.b>.97?uIslandReveal:step(bank.b,reveal));
+    float softBeach = (1.-smoothstep(0.,1.,bank.a))*(bank.b>.97?1.:step(bank.b,reveal));
     float horizon = smoothstep(165.,275.,farDepth)*mix(1.,smoothstep(2.,12.,distance),softBeach);
     gl_FragColor = vec4(water, 1.0);
     #include <tonemapping_fragment>

@@ -26,7 +26,7 @@ export function patchSand(shader: Shader, ocean: OceanEnvironment, surface: "san
     shader.vertexShader="uniform sampler2D bedMap; uniform vec4 bedBounds; uniform float reveal,uIslandReveal;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
       #include <begin_vertex>
       float key=texture2D(bedMap,(position.xz-bedBounds.xy)/bedBounds.zw).b;
-      if(key>0. && transformed.y>-.06) transformed.y=mix(-.06,transformed.y,key>.97?uIslandReveal:smoothstep(key-.030,key,reveal));
+      if(key>0. && key<=.97 && transformed.y>-.06) transformed.y=mix(-.06,transformed.y,smoothstep(key-.030,key,reveal));
     `);
   }
   if (surface === "cityBeach") {
@@ -58,7 +58,7 @@ export function patchSand(shader: Shader, ocean: OceanEnvironment, surface: "san
     if (landHeight >= 0. && landHeight < .6) {
       vec4 bank = texture2D(bedMap,(oceanPosition.xz-bedBounds.xy)/bedBounds.zw);
       vec2 wash = shoreWash(oceanPosition.xz,24.*bank.g,oceanTime);
-      float beach = max(0.,1.-bank.a)*(bank.b>.97?uIslandReveal:step(bank.b,reveal))*(1.-smoothstep(.22,.6,landHeight));
+      float beach = max(0.,1.-bank.a)*(bank.b>.97?1.:step(bank.b,reveal))*(1.-smoothstep(.22,.6,landHeight));
       diffuseColor.rgb *= 1.-.18*wash.y*beach;
       shoreFoam = wash.x*beach*mix(.85,.5,nightAmount);
     }

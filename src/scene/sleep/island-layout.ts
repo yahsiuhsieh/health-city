@@ -16,7 +16,7 @@ export function islandLayout(land:IslandTerrain){
     const x=left+rand()*(right-left),z=bottom+rand()*(top-bottom),inland=-land.distance(x,z);
     const [u,v]=islandNoisePoint(x,z);
     const spitEnd=left+(right-left)*(.19+.035*noise(v*.065,land.seed));
-    const spacing=2.2+5.8*noise(u*.09+land.seed,v*.09);
+    const spacing=1.65+7.6*noise(u*.09+land.seed,v*.09);
     if(x<spitEnd || inland<land.beachWidth(x,z)+4.5 || trees.some(p=>Math.hypot(p.x-x,p.z-z)<spacing))continue;
     const size=.91+rand()*.21;
     add("broadleaf-"+variant(3),x,land.elevation(x,z),z,[size,size,size]);trees.push({x,z});

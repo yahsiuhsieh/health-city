@@ -1,4 +1,6 @@
-import {cityPreview} from "../scene/city/preview.ts";
+import {GlassShell} from "./GlassShell.tsx";
+import {focusLabels,type FocusTarget} from "../scene/focus-flight.ts";
+import {cityPreview,reviewViews} from "../scene/city/preview.ts";
 import { Component, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { createReplay } from "../core/replay.ts";
@@ -13,9 +15,10 @@ import { asleepSeconds, daySleepVoyages, voyageAt, type SleepSpan } from "../cor
 import { SYNTHETIC_SESSION } from "../scene/sleep/session.ts";
 import { deriveHrvSkyline, thresholdMs } from "../core/skyline.ts";
 import { isTowerView, skylineDisplay, TOWER_DESIGNS } from "../scene/skyline-layout.ts";
-import type { CameraCommand, SceneView, TowerDesignId } from "../scene/skyline-layout.ts";
+import type { CameraCommand, ReviewView, TowerDesignId } from "../scene/skyline-layout.ts";
 import type { HrvSource } from "../core/daily-hrv.ts";
 import type { ReplayDay } from "../core/representative-day.ts";
+import { canonicalRhr } from "../core/rhr.ts";
 import { useDayReplay } from "./use-day-replay.ts";
 
 const BoatScene = lazy(() => import("../scene/BoatScene.tsx"));
@@ -41,7 +44,7 @@ export function App() {
   });
   const clock = useSyncExternalStore(replay.subscribe, replay.read);
   const timeLabel = selectedDay.replayLabel(clock.seconds);
-  const dayRequest = useDayReplay(source, selectedDay);
+  const dayRequest = useDayReplay(source, selectedDay,!reviewViews);
   const loadState = dayRequest.state;
   const recorded = loadState.status === "ready" ? loadState.recorded : undefined;
   const day = useMemo(() => recorded ? {
@@ -79,7 +82,7 @@ export function App() {
     : sleepStream?.status === "ready" ? "No sleep record" : "Sleep read failed";
   const failedStreams = recorded && [
     recorded.heartRate.status === "failed" && "heart rate", recorded.hrv.status === "failed" && "HRV", recorded.steps.status === "failed" && "steps",
-    recorded.calories.status === "failed" && "total energy", recorded.sleep.status === "failed" && "sleep",
+    recorded.calories.status === "failed" && "total energy", recorded.rhr.status === "failed" && "resting heart rate", recorded.sleep.status === "failed" && "sleep",
   ].filter(Boolean);
   const hrvStatus = loadState.status !== "ready" ? loadMessage
     : recorded?.hrv.status === "failed" ? "HRV read failed" : "No HRV data";
@@ -89,9 +92,9 @@ export function App() {
   const traffic = trafficAt(day, clock.seconds);
   const energyLabel = recorded?.calories.status === "failed" ? "Energy read failed"
     : traffic.meanKcalPerMinute === null ? "No calorie data" : traffic.meanKcalPerMinute.toFixed(2) + " kcal/min";
-  const [night, setNight] = useState(false);
-  const [selected, setSelected] = useState<"chart" | "wake" | "sleep" | "heart" | "boat" | "berth" | "skyline" | "steps" | "traffic" | TowerDesignId | number | null>(null);
-  const [cameraCommand, setCameraCommand] = useState<CameraCommand>(() => ({ view: cityPreview && new URLSearchParams(window.location.search).get("view")==="harbor" ? "harbor" : "skyline", revision: 0, districtRows: 1 }));
+  const [night, setNight] = useState(import.meta.env.DEV&&new URLSearchParams(location.search).get("lighting")==="night");
+  const [selected, setSelected] = useState<"chart" | "wake" | "sleep" | "heart" | "boat" | "skyline" | "steps" | "traffic" | "rhr" | TowerDesignId | number | null>(null);
+  const [cameraCommand, setCameraCommand] = useState<CameraCommand>(() => ({ view: cityPreview && new URLSearchParams(window.location.search).get("view")==="harbor" ? "harbor" : reviewViews?"skyline":"world", revision: 0, districtRows: 1 }));
   const [graphicsLost, setGraphicsLost] = useState(false);
   const [boatReady, setBoatReady] = useState(false);
   const [berthReady, setBerthReady] = useState(false);
@@ -105,12 +108,22 @@ export function App() {
   const onWalkReady = useCallback(() => setWalkReady(true), []);
   const onRoadReady = useCallback(() => setRoadReady(true), []);
   const onGraphicsLost = useCallback(() => { replay.pause(); setGraphicsLost(true); }, [replay]);
+  const [heartPinned,setHeartPinned]=useState(false);
   const [heartSpan,setHeartSpan]=useState([0,1] as [number,number]);
   const heartMean = day.heartMeans[heartSpan[0]];
-  const selectHeart=(a:number,b:number)=>{replay.pause();setHeartSpan([a,b]);setSelected("heart")};
+  const focusCamera=(view:FocusTarget)=>{
+    if(!reviewViews)setCameraCommand(prev=>({...prev,view,revision:prev.revision+1}));
+  };
+  function openFocus(view:FocusTarget){
+    if(view!=="world")replay.pause();
+    setHeartPinned(false);focusCamera(view);
+    if(view==="heart"){const i=Math.min(day.heartMeans.length-1,Math.floor(clock.seconds/300));setHeartSpan([i,i+1]);}
+    setSelected(({world:null,sleep:"sleep",hrv:"skyline",heart:"heart",rhr:"rhr",steps:"steps",energy:"traffic"} as const)[view]);
+  }
+  const selectHeart=(a:number,b:number)=>{replay.pause();setHeartPinned(true);focusCamera("heart");setHeartSpan([a,b]);setSelected("heart")};
   const heartReady=usingExamples||recorded?.heartRate.status==="ready";
   const heartStatus=heartReady?(recorded?.cachedHeartRate?"Cached Google Health":usingExamples?"Synthetic data":"Google Health"):loadState.status==="ready"?"Heart-rate read failed":loadMessage;
-  const ridgeView=cameraCommand.view==="ridge";
+  const ridgeView=(cameraCommand.view==="ridge"||cameraCommand.view==="heart");
   const sleepView=cameraCommand.view.startsWith("sleep");
   const chartOpen=selected==="chart" && !!sleep;
   const sleepContext=sleepView||chartOpen;
@@ -143,13 +156,12 @@ export function App() {
       if(playing && !current.playing && current.seconds===replay.durationSeconds){
         const nextDay=SYNTHETIC_DAYS.find(item=>item.date===arrivalDate)!;
         const next=createReplay(nextDay.durationSeconds);next.setSpeed(current.speed);next.play();
-        setReplayDay({day:nextDay,replay:next,source:"synthetic"});setSelected(previous=>previous==="chart"?"chart":null);
+        setReplayDay({day:nextDay,replay:next,source:"synthetic"});setSelected(previous=>previous==="chart"||(!reviewViews&&previous==="sleep")?previous:null);
       }
       playing=current.playing;
     });
   },[sleepContext,usingExamples,day.date,replay]);
   const selectBoat = () => { replay.pause(); setSelected("boat"); };
-  const selectBerth = () => { replay.pause(); setSelected("berth"); };
   const selectTower = (design: TowerDesignId) => { replay.pause(); setSelected(design); };
   const selectPlot = (id:number) => { replay.pause(); setSelected(id); };
   const selectSkyline = () => { replay.pause(); setSelected("skyline"); };
@@ -160,8 +172,11 @@ export function App() {
     const nextReplay = createReplay(nextDay.durationSeconds);
     nextReplay.setSpeed(replay.read().speed);
     replay.pause();
+    setHeartPinned(false);
+    if(reviewViews || nextSource!==source){
+      focusCamera("world");setSelected(null);
+    }
     setReplayDay({ day: nextDay, replay: nextReplay, source: nextSource });
-    setSelected(null);
     setSelectedSleepId(undefined);
   };
   const selectDate = (date: string) => {
@@ -172,16 +187,16 @@ export function App() {
       switchDay(recordedReplayDay(date), source);
     }
   };
-  const setView = (view: SceneView) => {
+  const setView = (view: ReviewView) => {
     setCameraCommand(previous => ({ view, revision: previous.revision + 1, districtRows: district.rows }));
     if (isTowerView(view)||chartOpen) setSelected(null);
   };
   const focusedTower = TOWER_DESIGNS.find(design => design.id === cameraCommand.view);
   const selectedTower = TOWER_DESIGNS.find(design => design.id === selected);
-  const walkView = cameraCommand.view === "walk";
-  const roadView = cameraCommand.view === "road";
+  const walkView = (cameraCommand.view === "walk"||cameraCommand.view==="steps");
+  const roadView = (cameraCommand.view === "road"||cameraCommand.view==="energy");
   const inspectWalk = walkView || cameraCommand.view === "square" || cameraCommand.view === "side";
-  const skylineView = !!focusedTower || cameraCommand.view === "skyline" || cameraCommand.view === "world";
+  const skylineView = cameraCommand.view==="hrv" || !!focusedTower || cameraCommand.view === "skyline" || cameraCommand.view === "world";
   const inspectFocus = () => {
     if(sleepView){if(!sleep&&usingExamples){showDeparture();return;}replay.pause();setSelected(sleep?"sleep":"boat");}
     else if (ridgeView) { const i=Math.min(day.heartMeans.length-1,Math.floor(clock.seconds/300));selectHeart(i,i+1); }
@@ -189,19 +204,38 @@ export function App() {
     else if (skylineView) selectSkyline();
     else if (inspectWalk) selectSteps();
     else if (roadView) selectTraffic();
-    else if (cameraCommand.view === "cargo") selectBerth();
     else selectBoat();
   };
   const inspectLabel = sleepView?"Inspect sleep voyage":ridgeView?"Inspect heart rate":focusedTower ? "Inspect tower" : skylineView ? "Inspect skyline" : inspectWalk ? "Inspect steps"
-    : roadView ? "Inspect traffic" : cameraCommand.view === "cargo" ? "Inspect berth" : "Inspect boat";
+    : roadView ? "Inspect traffic" : "Inspect boat";
   const sceneTitle = sleepView?(cameraCommand.view==="sleep-island"?"Sleep island":"Sleep voyage"):ridgeView?"Heart-rate mountains":focusedTower ? focusedTower.name : skylineView ? "HRV skyline"
-    : walkView ? "Market crossing" : roadView ? "Market Avenue" : cameraCommand.view === "square" ? "Civic plaza" : cameraCommand.view === "side" ? "Orchard Lane" : cameraCommand.view === "cargo" ? "Cargo berth" : cameraCommand.view === "berth" ? "Working quay" : "Working harbor";
+    : walkView ? "Market crossing" : roadView ? "Market Avenue" : cameraCommand.view === "square" ? "Civic plaza" : cameraCommand.view === "side" ? "Orchard Lane" : cameraCommand.view === "berth" ? "Working quay" : "Working harbor";
 
   useEffect(() => {
     const visibility = () => { if (document.hidden) replay.pause(); };
     document.addEventListener("visibilitychange", visibility);
     return () => { document.removeEventListener("visibilitychange", visibility); replay.pause(); };
   }, [replay]);
+
+  const rhr=canonicalRhr(usingExamples?day.rhr:recorded?.rhr.status==="ready"?recorded.rhr.value:[]);
+  const scene=(<div className="scene-canvas" data-testid="scene-canvas">
+        <SceneBoundary onFailure={onGraphicsLost}>
+          <Suspense fallback={<div className="scene-message" role="status">Loading the harbor…</div>}>
+            <BoatScene rhrBpm={rhr.status==="value"?rhr.bpm:null} sleep={sleep} cardOpen={selected} onSteps={()=>openFocus("steps")} onEnergy={()=>openFocus("energy")} onRhr={()=>openFocus("rhr")} onIsland={()=>reviewViews?openChart():openFocus("sleep")} onWake={span=>{if(sleep){replay.pause();focusCamera("sleep");setWakeRecord({id:sleep.session.id,span});setSelected("wake");}}} onHeart={selectHeart} heartReady={!!heartReady} replay={replay} day={day} night={night} cameraCommand={cameraCommand} hrv={hrv}
+              onSelect={reviewViews?(sleep && !cityPreview?openChart:selectBoat):()=>openFocus("sleep")} onGraphicsLost={onGraphicsLost}
+              onBoatReady={onBoatReady} onBerthReady={onBerthReady}
+              onSkylineReady={onSkylineReady} onWalkReady={onWalkReady}
+              onRoadReady={onRoadReady} onSelectTower={reviewViews?selectTower:()=>openFocus("hrv")} onPlot={reviewViews?selectPlot:()=>openFocus("hrv")} />
+          </Suspense>
+        </SceneBoundary>
+      </div>);
+  if(!reviewViews)return <GlassShell day={day} replay={replay} clock={clock} focus={cameraCommand.view as FocusTarget} open={selected!==null}
+    choose={openFocus} close={()=>setSelected(null)} date={selectDate} source={synthetic=>switchDay(synthetic?SYNTHETIC_DAYS[0]:recordedReplayDay(lastEndedReplayDate()),synthetic?"synthetic":"google-health")}
+    refresh={()=>void dayRequest.load()} synthetic={usingExamples} google={dayRequest.googleHealthEnabled} recorded={recorded}
+    rmssd={loadState.status==="ready"?loadState.rmssdMs:null} towers={hrv.status==="available"?hrv.buildingCount:null} load={loadState.status}
+    ready={sceneReady} lost={graphicsLost} night={night} failures={(failedStreams??[]).filter((v):v is string=>typeof v==="string")}
+    sleep={sleep} sessions={sleepVoyages} selectSession={selectSleep} wake={selected==="wake"?wakeRecord?.span:undefined}
+    interval={selected==="heart"&&heartPinned?heartSpan:undefined}>{scene}</GlassShell>;
 
   return <main className={night ? "app night" : "app"}>
     <header className="app-header">
@@ -219,36 +253,26 @@ export function App() {
       <a className="account-link" href="/auth/status">Account</a>
     </header>
 
-    <section className={chartOpen?"world has-chart":"world"} aria-label="Interactive HealthCity scene">
+    <section className={(chartOpen?"world has-chart":"world")+(reviewViews?"":" focus-world")} aria-label="Interactive HealthCity scene">
       <div className={sleepView ? "scene-heading voyage-scene-heading" : inspectWalk || roadView ? "scene-heading harbor-activity-heading" : "scene-heading"}>
-        <h1>{cityPreview ? cameraCommand.view==="walk"?"Market crossing":cameraCommand.view==="detail"?"Working boat":cameraCommand.view==="world"?"City overview":cameraCommand.view==="skyline"?"Waterfront block":sceneTitle : sceneTitle}</h1>
+        <h1>{cityPreview ? cameraCommand.view==="walk"?"Market crossing":cameraCommand.view==="detail"?"Working boat":cameraCommand.view==="world"?"City overview":cameraCommand.view==="skyline"?"Waterfront block":sceneTitle : reviewViews?sceneTitle:focusLabels[cameraCommand.view as FocusTarget]}</h1>
         {sleepView && <p>{sleepStatus}</p>}
         {sleepView && !sleep && usingExamples && <button onClick={showDeparture}>View Nov 11 departure</button>}
         {ridgeView && <p>{heartReady && day.heartMeans.every(v=>v===null)?"No heart-rate data":heartStatus}</p>}
         {focusedTower && <p>{focusedTower.style + " · Design preview"}</p>}
-        {skylineView && <p className="skyline-summary">{hrv.status === "available"
+        {skylineView && (reviewViews||cameraCommand.view==="hrv") && <p className="skyline-summary">{hrv.status === "available"
           ? (usingExamples ? "Synthetic daily HRV " : "Daily HRV ") + hrv.rmssdMs.toFixed(2) + " ms · " + hrv.buildingCount + " buildings"
           : hrvStatus}</p>}
         {skylineView && district.overflow && <p className="skyline-summary">Showing {district.visibleCount} buildings in this district.</p>}
       </div>
-      <div className="scene-canvas" data-testid="scene-canvas">
-        <SceneBoundary onFailure={onGraphicsLost}>
-          <Suspense fallback={<div className="scene-message" role="status">Loading the harbor…</div>}>
-            <BoatScene sleep={sleep} onIsland={openChart} onWake={span=>{if(sleep){replay.pause();setWakeRecord({id:sleep.session.id,span});setSelected("wake");}}} onHeart={selectHeart} heartReady={!!heartReady} replay={replay} day={day} night={night} cameraCommand={cameraCommand} hrv={hrv}
-              onSelect={sleep && !cityPreview?openChart:selectBoat} onSelectBerth={selectBerth} onGraphicsLost={onGraphicsLost}
-              onBoatReady={onBoatReady} onBerthReady={onBerthReady}
-              onSkylineReady={onSkylineReady} onWalkReady={onWalkReady}
-              onRoadReady={onRoadReady} onSelectTower={selectTower} onPlot={selectPlot} />
-          </Suspense>
-        </SceneBoundary>
-      </div>
+      {scene}
       {!sceneReady && !graphicsLost && <p className="asset-status" role="status">Loading harbor…</p>}
 
       <div className="view-controls" aria-label="View controls">
-        <button onClick={() => setView("world")}>World view</button>
+        {reviewViews?<><button onClick={() => setView("world")}>World view</button>
         <label className="view-picker"><span className="sr-only">Scene view</span>
-          <select aria-label="Scene view" value={cameraCommand.view} onChange={event => setView(event.target.value as SceneView)}>
-            {cityPreview?<><option value="world">World overview</option><option value="skyline">Waterfront block</option><option value="walk">Market crossing</option><option value="harbor">Harbor view</option><option value="cargo">Cargo berth</option><option value="berth">Working quay</option><option value="detail">Working boat</option></>:<>
+          <select aria-label="Scene view" value={cameraCommand.view} onChange={event => setView(event.target.value as ReviewView)}>
+            {cityPreview?<><option value="world">World overview</option><option value="skyline">Waterfront block</option><option value="walk">Market crossing</option><option value="harbor">Harbor view</option><option value="berth">Working quay</option><option value="detail">Working boat</option></>:<>
             <option value="sleep">Sleep voyage</option><option value="sleep-island" disabled={!usingExamples && !hasIsland}>Sleep island</option>
             <option value="ridge">Heart-rate mountains</option>
             <option value="world">World overview</option>
@@ -263,22 +287,27 @@ export function App() {
               <option value="square">Civic plaza</option>
               <option value="side">Orchard Lane</option>
               <option value="detail">Boat detail</option>
-              <option value="cargo">Cargo berth</option><option value="berth">Working quay</option>
+              <option value="berth">Working quay</option>
             </optgroup></>}
           </select>
         </label>
+        </>:<nav className="focus-chips" aria-label="Camera focus">
+          {(Object.keys(focusLabels) as FocusTarget[]).map(view=><button key={view} aria-pressed={cameraCommand.view===view} onClick={()=>openFocus(view)}>{focusLabels[view]}</button>)}
+        </nav>}
         <fieldset className="lighting-controls"><legend className="sr-only">Review lighting</legend>
           <button aria-pressed={!night} onClick={() => setNight(false)}>Day</button>
           <button aria-pressed={night} onClick={() => setNight(true)}>Night</button>
         </fieldset>
       </div>
 
+      {selected==="rhr" && <aside className="record-card" aria-label="Resting heart rate"><div className="card-heading"><h2>Resting heart rate</h2><button aria-label="Close resting heart rate" onClick={()=>setSelected(null)}>×</button></div><p>Reservoir site preview</p></aside>}
+      {selected==="sleep"&&!sleep && <aside className="record-card" aria-label="Sleep voyage"><div className="card-heading"><h2>Sleep voyage</h2><button aria-label="Close sleep details" onClick={()=>setSelected(null)}>×</button></div><p>{sleepStatus}</p></aside>}
       {selected === "heart" && <aside className="record-card" aria-label="Heart-rate interval"><div className="card-heading"><h2>Heart rate</h2><button aria-label="Close heart rate" onClick={()=>setSelected(null)}>×</button></div>
-        <p>{day.intervalLabel(heartSpan[0]*300)} – {day.intervalLabel(heartSpan[1]*300)}</p>
+        <p>{day.replayLabel(heartSpan[0]*300)} – {day.replayLabel(heartSpan[1]*300)}</p>
         <p>{heartReady?(heartMean==null?"No heart-rate data":heartMean.toFixed(2)+" bpm · Five-minute mean"):heartStatus}</p>
         {heartReady && <p>{heartStatus}</p>}</aside>}
       {sleep && (selected==="wake"||selected==="sleep") &&
-        <SleepDetails sleep={sleep} synthetic={usingExamples}
+        <SleepDetails reviewWake={reviewViews} sleep={sleep} synthetic={usingExamples}
           wake={selected==="wake"&&wakeRecord?.id===sleep.session.id?wakeRecord.span:undefined}
           close={()=>setSelected(null)} depart={usingExamples?showDeparture:undefined} openChart={openChart}/>}
       {chartOpen && sleep && <VoyageChart key={sleep.session.id} sleep={sleep} time={clock.seconds+sleep.offset} close={closeChart}/>}
@@ -289,13 +318,6 @@ export function App() {
           <div><dt>Movement</dt><dd>Synthetic boat and water motion</dd></div>
           <div><dt>Sleep records</dt><dd>{sleepStatus}</dd></div></dl>
         {usingExamples && <button onClick={()=>{if(!sleep)showDeparture();else{setSelected(null);setView("sleep")}}}>Follow sleep voyage</button>}
-      </aside>}
-      {selected === "berth" && <aside className="record-card" aria-labelledby="berth-title">
-        <div className="card-heading"><h2 id="berth-title">The cargo berth</h2><button aria-label="Close berth details" onClick={() => setSelected(null)}>×</button></div>
-        <p>The shore crane transfers a slung pallet between the ship and a flatbed. The forklift serves the covered storage bays.</p>
-        <dl><div><dt>Equipment</dt><dd>Rail-mounted jib crane and forklift</dd></div>
-          <div><dt>Road access</dt><dd>Quay Road service gate</dd></div>
-          <div><dt>Movement</dt><dd>Scenic replay cycle</dd></div></dl>
       </aside>}
       {selected === "steps" && <aside className="record-card" aria-labelledby="steps-title">
         <div className="card-heading"><h2 id="steps-title">Harbor steps</h2>
@@ -342,7 +364,7 @@ export function App() {
 
       {graphicsLost && <div className="graphics-alert" role="alert">Graphics stopped. Playback is paused. Reload this page to restore the scene.</div>}
       <div className="scene-footer"><span>Drag to orbit · Right-drag to pan · Scroll to zoom</span>
-        <button ref={inspectButton} className="text-button" onClick={inspectFocus}>{inspectLabel}</button></div>
+        {reviewViews&&<button ref={inspectButton} className="text-button" onClick={inspectFocus}>{inspectLabel}</button>}</div>
     </section>
 
     <section className="replay-panel" aria-label="Day replay">

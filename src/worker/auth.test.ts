@@ -1,3 +1,4 @@
+import {summaryDates,summarizeReplay} from "../core/week-summary.ts";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { napSleep, overnightSleep } from "../../tests/fixtures/sleep-replay.ts";
 import { parseRecordedReplay, RECORDED_REPLAY_PATH } from "../core/recorded-replay.ts";
@@ -201,12 +202,33 @@ describe("Google OAuth and owner sessions", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(await response.json()).toEqual({
       date: "2026-11-08", timeZone: "America/Chicago", hrv: { status: "failed" },
+      rhr: { status: "ready", value: ["WITH_SLEEP", "ONLY_WITH_AWAKE_DATA"].map(method => ({ bpm: 61, method })) },
       heartRate: { status:"ready",value:Array(288).fill(null) }, cachedHeartRate:false,
       calories: { status: "ready", value: Array(288).fill(null) },
       steps: { status: "ready", value: Array(288).fill(null) },
       sleep: { status: "ready", value: [] },
     });
-    expect(f.fetcher).toHaveBeenCalledTimes(6);
+    expect(f.fetcher).toHaveBeenCalledTimes(7);
+  });
+
+  it("reads one range per metric and uses the same stored daily values for both endpoints",async()=>{
+    const f=fixture(),cookie=await signedIn(f);
+    f.env.GOOGLE_HRV_REPLAY_ENABLED="true";
+    f.sql.exec(readFileSync(new URL("../../migrations/0005_metric_history.sql",import.meta.url),"utf8"));
+    const body="date=2026-11-08&timeZone=America%2FChicago";
+    f.fetcher.mockClear();
+    const response=await f.request("/api/summary/week","POST",cookie,origin,body);
+    expect(response.status).toBe(200);
+    const week=await response.json() as {days:ReturnType<typeof summarizeReplay>[]};
+    expect(week.days.map(d=>d.date)).toEqual(summaryDates("2026-11-08"));
+    expect(week.days.at(-1)?.rhr).toEqual({status:"value", bpm:61, method:"WITH_SLEEP"});
+    expect(f.fetcher).toHaveBeenCalledTimes(7);
+    f.fetcher.mockClear();
+    const selected=await f.request(RECORDED_REPLAY_PATH,"POST",cookie,origin,body);
+    const day=parseRecordedReplay(await selected.json(),"2026-11-08","America/Chicago",86400);
+    expect(day).not.toBeNull();
+    expect(summarizeReplay(day!)).toEqual(week.days.at(-1));
+    expect(f.fetcher).not.toHaveBeenCalled();
   });
 
   it("delivers normalized sleep and keeps the other streams usable if sleep fails", async () => {
@@ -239,7 +261,7 @@ describe("Google OAuth and owner sessions", () => {
       startTime: date + "T06:00:00Z", endTime: date + "T06:05:00Z", heartRate:{beatsPerMinuteAvg:67.381},
     }]};
     expect(await read()).toMatchObject({
-      cachedHeartRate:false, heartRate:{status:"ready",value:[67.381,...Array(287).fill(null)]},
+      cachedHeartRate:false, heartRate:{status:"ready",value:[67.38,...Array(287).fill(null)]},
     });
     f.state.heartResponse = {rollupDataPoints:null};
     expect(await read()).toMatchObject({cachedHeartRate:false,heartRate:{status:"failed"},steps:{status:"ready"}});
@@ -251,13 +273,13 @@ describe("Google OAuth and owner sessions", () => {
     const read=async()=> (await f.request(RECORDED_REPLAY_PATH,"POST",cookie,origin,"date=2026-11-08&timeZone=America%2FChicago")).json() as Promise<{cachedHeartRate:boolean;heartRate:{value:(number|null)[]}}>;
     const point={startTime:"2026-11-08T06:00:00Z",endTime:"2026-11-08T06:05:00Z",heartRate:{beatsPerMinuteAvg:67.381}};
     f.state.heartResponse={rollupDataPoints:[point]};
-    expect((await read()).heartRate.value[0]).toBe(67.381);
+    expect((await read()).heartRate.value[0]).toBe(67.38);
     f.state.heartResponse={rollupDataPoints:[point],nextPageToken:"repeat"};
     let result=await read();
     expect(result.cachedHeartRate).toBe(true);
-    expect(result.heartRate.value[0]).toBe(67.381);
+    expect(result.heartRate.value[0]).toBe(67.38);
     f.state.refreshStatus=401;
-    expect((await read()).heartRate.value[0]).toBe(67.381);
+    expect((await read()).heartRate.value[0]).toBe(67.38);
     f.state.refreshStatus=200;
     point.heartRate.beatsPerMinuteAvg=69.87;
     f.state.heartResponse={rollupDataPoints:[point]};

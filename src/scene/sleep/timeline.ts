@@ -19,12 +19,13 @@ function schedule(session: SleepSession) {
       return 1.5+(S_MOUTH-1.5)*(ease(u)+Math.min(3,finalSlope)*u*u*(u-1));
     }
     const rate=(ROUTE_LENGTH-S_MOUTH)/(total-lead),remaining=(total-a)*rate;
-    if(remaining>=40)return S_MOUTH+(a-lead)*rate;
-    const arrivalTime=40/rate,slideTime=Math.min(114,arrivalTime*.22);
+    const approach=Math.min(40,(ROUTE_LENGTH-S_MOUTH)*.045);
+    if(remaining>=approach)return S_MOUTH+(a-lead)*rate;
+    const arrivalTime=approach/rate,slideTime=Math.min(114,arrivalTime*.22);
     const timeLeft=total-a;
     if(timeLeft<=slideTime)return ROUTE_LENGTH-JETTY_SLIDE+JETTY_SLIDE*ease(1-timeLeft/slideTime);
     const u=(arrivalTime-timeLeft)/(arrivalTime-slideTime);
-    return ROUTE_LENGTH-40+(40-JETTY_SLIDE)*ease(u)+rate*(arrivalTime-slideTime)*u*(1-u)**2;
+    return ROUTE_LENGTH-approach+(approach-JETTY_SLIDE)*ease(u)+rate*(arrivalTime-slideTime)*u*(1-u)**2;
   }
   let clock = 0;
   const spans = session.segments.map((seg,index) => {

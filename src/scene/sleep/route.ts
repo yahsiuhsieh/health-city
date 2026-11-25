@@ -8,7 +8,7 @@ const transitZ = berthZ + slip;
 const slipped: Point = [berthX, transitZ];
 const [mouthX,mouthZ] = HARBOR_MOUTH.point;
 const offshore = (east:number,south:number):Point => [mouthX+east,mouthZ+south];
-export const JETTY_HEAD = offshore(275,395);
+export const JETTY_HEAD = offshore(62,223);
 export type Maneuver = "path" | "hold" | "pivot" | "lateral";
 
 function pose(x: number, z: number, yaw: number, maneuver: Maneuver) {
@@ -24,11 +24,6 @@ function bend(a: Point,b: Point,c: Point,d: Point) {
   return curve;
 }
 
-// Each leg has an east-west tangent at both ends.
-function fairway(a: Point,b: Point) {
-  const third = (b[0]-a[0])/3;
-  return bend(a,[a[0]+third,a[1]],[b[0]-third,b[1]],b);
-}
 // Replace each fairway corner with a tangent circular arc. A cubic per quadrant
 // keeps the radius within 1% and uses the same distance lookup as the straight legs.
 function roundedCourse(points:Point[],radius:number) {
@@ -59,8 +54,7 @@ function roundedCourse(points:Point[],radius:number) {
 const outbound=new CurvePath<Vector3>();
 outbound.add(line(slipped,HARBOR_MOUTH.point));
 export const S_MOUTH = slip+outbound.getLength();
-const offshoreCourse=roundedCourse([HARBOR_MOUTH.point, offshore(11,0), offshore(48,-5), offshore(294,-2), offshore(378,116),
-  offshore(459,271), offshore(459,395), JETTY_HEAD],63);
+const offshoreCourse=roundedCourse([HARBOR_MOUTH.point, offshore(135,0), offshore(135,223), JETTY_HEAD],62);
 for(const leg of offshoreCourse.curves)outbound.add(leg);
 export const JETTY_SLIDE = 1;
 export const ROUTE_LENGTH = slip + outbound.getLength() + JETTY_SLIDE;
@@ -81,20 +75,13 @@ export function routeFrame(distance: number) {
   return s<slip ? pose(berthX,berthZ+s,0,"lateral") : frameOn(outbound,s-slip);
 }
 
-const arrivalLane=offshore(0,14);
-const inbound=roundedCourse([JETTY_HEAD,offshore(218,395),offshore(145,455),offshore(42,455),offshore(20,260),
-  offshore(103,132),offshore(74,14),arrivalLane],66);
-inbound.add(fairway(arrivalLane,turningBasin.center));
-
-// Two tangent arcs return the east-facing boat to the working quay.
-const [cx,cz]=turningBasin.center;
-const alignX=127;
-const dx=alignX-cx,dz=transitZ-cz;
-const approachRadius=(dx*dx+dz*dz)/(4*Math.abs(dz));
-const cornerRun=(dx*dx-dz*dz)/(4*dx);
-const approach=roundedCourse([turningBasin.center,[cx+dx/2-cornerRun,cz],
-  [cx+dx/2+cornerRun,transitZ],[alignX,transitZ]],approachRadius);
-approach.add(line([alignX,transitZ],slipped));
+// The northbound return runs west of the cay. The final bend enters the harbor.
+const northboundX=46;
+const inbound=roundedCourse([JETTY_HEAD,[northboundX,JETTY_HEAD[1]],[northboundX,0]],62);
+const harborEntry=roundedCourse([[northboundX,0],[northboundX,transitZ],turningBasin.center],32);
+for(const leg of harborEntry.curves)inbound.add(leg);
+const approach=new CurvePath<Vector3>();
+approach.add(line(turningBasin.center,slipped));
 const smooth = (u: number) => u*u*(3-2*u);
 export function returnStops(seconds: number) {
   const pivot = Math.max(.27,Math.min(.49,342/seconds));

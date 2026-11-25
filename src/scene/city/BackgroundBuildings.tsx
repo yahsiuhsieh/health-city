@@ -3,11 +3,49 @@ import {useOcean} from "../ocean/OceanEnvironment.tsx";
 import {DRY_LAYER} from "../ocean/layers.ts";
 import {useEffect,useLayoutEffect,useMemo,useRef} from "react";
 import {useLoader} from "@react-three/fiber";
-import {Color,InstancedMesh,Mesh,MeshStandardMaterial,Object3D} from "three";
+import {BatchedMesh,Color,Group,InstancedMesh,Mesh,MeshStandardMaterial,Object3D} from "three";
 import {GLTFLoader} from "three/addons/loaders/GLTFLoader.js";
 import {assembleBlock,frontage} from "./building-assembler.ts";
 import type {Building,Placement} from "./building-assembler.ts";
 
+function place(o:Object3D,item:Placement){
+  o.position.fromArray(item.at);o.rotation.y=item.yaw;o.scale.fromArray(item.size);o.updateMatrix();
+  if(item.grade){
+    // Follow the east-west slope only on ground surfaces.
+    const e=o.matrix.elements;
+    e[1]+=item.grade*e[0];e[5]+=item.grade*e[4];e[9]+=item.grade*e[8];
+  }
+}
+
+// The city kit shares one opaque material. Keep per-placement colors and plot picking.
+function OverviewBuildings({groups,onPlot}:{groups:{source:Mesh;items:Placement[]}[];onPlot?:(id:number)=>void}){
+  const root=useRef<Group>(null),plotIds=useRef<(number|undefined)[]>([]);
+  useLayoutEffect(()=>{
+    const container=root.current!;
+    const vertices=groups.reduce((n,g)=>n+g.source.geometry.getAttribute("position").count,0);
+    const indices=groups.reduce((n,g)=>n+(g.source.geometry.index?.count??0),0);
+    const count=groups.reduce((n,g)=>n+g.items.length,0);
+    const mesh=new BatchedMesh(count,vertices,indices,groups[0]!.source.material as MeshStandardMaterial);
+    const pose=new Object3D(),color=new Color(),plots:(number|undefined)[]=[];
+    mesh.layers.set(DRY_LAYER);mesh.castShadow=mesh.receiveShadow=true;
+    mesh.sortObjects=false;
+    for(const {source,items} of groups){
+      const geometry=mesh.addGeometry(source.geometry);
+      for(const item of items){
+        const id=mesh.addInstance(geometry);
+        place(pose,item);mesh.setMatrixAt(id,pose.matrix);mesh.setColorAt(id,color.set(item.color));
+        plots[id]=item.plotId;
+      }
+    }
+    mesh.computeBoundingSphere();
+    container.add(mesh);plotIds.current=plots;
+    return ()=>{container.remove(mesh);mesh.dispose();};
+  },[groups]);
+  return <group ref={root} onClick={onPlot?(e:import("@react-three/fiber").ThreeEvent<MouseEvent>)=>{
+    const plot=plotIds.current[e.batchId??-1];
+    if(plot!==undefined){e.stopPropagation();if(e.delta<5)onPlot(plot);}
+  }:undefined}/>;
+}
 function Batch({source,items,onPlot}:{source:Mesh;items:Placement[];onPlot?:(id:number)=>void}) {
   const ref=useRef<InstancedMesh>(null);
   const ocean=useOcean();
@@ -26,12 +64,7 @@ function Batch({source,items,onPlot}:{source:Mesh;items:Placement[];onPlot?:(id:
   useLayoutEffect(()=>{
     const mesh=ref.current!,o=new Object3D(),color=new Color();
     items.forEach((item,i)=>{
-      o.position.fromArray(item.at);o.rotation.y=item.yaw;o.scale.fromArray(item.size);o.updateMatrix();
-      if(item.grade){
-        // Follow the east-west slope only on ground surfaces.
-        const e=o.matrix.elements;
-        e[1]+=item.grade*e[0];e[5]+=item.grade*e[4];e[9]+=item.grade*e[8];
-      }
+      place(o,item);
       mesh.setMatrixAt(i,o.matrix);
       color.set(item.color);
       if(/tree-|pine-|shrub-/.test(source.name))color.multiplyScalar(1+.06*Math.sin(item.at[0]*13+item.at[2]*7));
@@ -62,8 +95,17 @@ export function BackgroundBuildings({night,landscape,buildings=frontage,onPlot}:
         "street-tree-"+(seed%2?"a":"b");
       const batch=grouped.get(name)??[];batch.push(item);grouped.set(name,batch);
     }
-    return [...grouped];
-  },[night,landscape,buildings,overview]);
-  // Remount when capacity changes so pointer events target the new mesh.
-  return <group name="Street walls and gardens">{batches.map(([name,batch])=><Batch key={name+"/"+batch.length} source={(flora!.scene.getObjectByName(name)??kit!.scene.getObjectByName(name)) as Mesh} items={batch} onPlot={onPlot}/>)}</group>;
+    const staticKit:{source:Mesh;items:Placement[]}[]=[],other:{source:Mesh;items:Placement[]}[]=[];
+    for(const [name,items] of grouped){
+      const plant=flora!.scene.getObjectByName(name);
+      const source=(plant??kit!.scene.getObjectByName(name)) as Mesh;
+      const list=overview&&!plant&&name!=="lit-glazing"?staticKit:other;
+      list.push({source,items});
+    }
+    return {staticKit,other};
+  },[night,landscape,buildings,overview,kit,flora]);
+  return <group name="Street walls and gardens">
+    {batches.staticKit.length>0&&<OverviewBuildings groups={batches.staticKit} onPlot={onPlot}/>}
+    {batches.other.map(({source,items})=><Batch key={source.name+"/"+items.length} source={source} items={items} onPlot={onPlot}/>)}
+  </group>;
 }

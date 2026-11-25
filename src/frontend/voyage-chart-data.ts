@@ -2,7 +2,7 @@ import { ROUTE_LENGTH, routeFrame } from "../scene/sleep/route.ts";
 import { routeSpans } from "../scene/sleep/timeline.ts";
 
 export function chartPoint(x:number,z:number) {
-  return {x:54+.75*(x*Math.cos(.3)+z*Math.sin(.3)),y:118+.56*(-x*Math.sin(.3)+z*Math.cos(.3))};
+  return {x:270+1.8*z+.45*x,y:34+.84*x-.22*z};
 }
 export function chartPosition(distance:number){
   const frame=routeFrame(distance);

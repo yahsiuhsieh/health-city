@@ -1,5 +1,5 @@
 import { seededRandom } from "./random.ts";
-import { outerReef } from "./outer-reef.ts";
+import { outerReef, outerReefScale } from "./outer-reef.ts";
 import { Vector4 } from "three";
 import { packSeabed } from "../ocean/seabed.ts";
 import { clamp01,noise,islandNoisePoint,type IslandTerrain } from "./island-shape.ts";
@@ -69,7 +69,7 @@ export function outerReefSeabed(){
     const coral=clamp01(2.4*(broad-.31)+.85*(rough-.5));
     const cover=clamp01(.6-edge/14);
     const relief=.35+.75*rough+1.75*(1-coral);
-    const slope=Math.max(0,edge)*(.68+.69*broad);
+    const slope=Math.max(0,edge)/outerReefScale*(.68+.69*broad);
     const shelf=Math.min(40,outerReef.shelfDepth(x,z),relief+slope);
     const drop=clamp01((edge-20)/18);
     const depth=shelf+(40-shelf)*drop*drop*(3-2*drop);

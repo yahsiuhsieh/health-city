@@ -5,7 +5,7 @@ import {coast,coastGroundOffset,shorePanels} from "../coastline.ts";
 import {DRY_LAYER,WATER_LEVEL} from "../ocean/layers.ts";
 import {useOcean} from "../ocean/OceanEnvironment.tsx";
 import {patchSand} from "../ocean/sand-material.ts";
-import {CITY_PLAN,towerSites,permitsStreetTree,civicPlaza,exerciseGardenSite,reservoirSite} from "./city-plan.data.ts";
+import {CITY_PLAN,towerSites,permitsStreetTree,civicPlaza,exerciseGardenSite} from "./city-plan.data.ts";
 import {bendEdgeMarking,bendRun,taperLength,blocks,junctionApproaches,edgeCenterline,offsetLine,roadSurfaces,sections,sidewalks,signalJunctions,throughNeighbor} from "./street-graph.ts";
 import type {Point} from "./street-graph.ts";
 import {laneArrows} from "./lane-arrows.ts";
@@ -96,8 +96,6 @@ function buildGround(){
     const curve=new CatmullRomCurve3(controls.map(([u,v])=>new Vector3(x+w*u,0,z+d*v)),true);
     return curve.getSpacedPoints(42).slice(0,-1).map(v=>[v.x,v.z]);
   }
-  const meadow=meadowLoop(reservoirSite,[[.04,.30],[.20,.07],[.64,.09],[.93,.32],[.86,.67],[.61,.9],[.20,.90],[.05,.68]]);
-  mesh.polygon(meadow,.08,p.planting);
   const garden=meadowLoop(exerciseGardenSite,[[.04,.25],[.26,.055],[.78,.09],[.96,.30],[.82,.65],[.56,.91],[.13,.86]]);
   mesh.polygon(garden,.08,p.lawn);
   mesh.polygon(civicPlaza,.18,p.plaza);
@@ -114,11 +112,7 @@ function buildGround(){
   for(const [i,[x,z]] of ([[-48,79],[-38,74],[-64,96],[-74,99],[-110,105]] as const).entries()){
     if(clearsFrontage(x,z,4,marketBuildings)&&permitsStreetTree(x,z,4))place("umbrella-pine-a",x,z,[.94,.94,.94],"#f8f8f0",i);
   }
-  for(const [i,[x,z]] of meadow.entries())if(i%5===0)place(i%2?"shrub-a":"shrub-b",x,z,[1.2,1,1.25],"#ffffff",i);
   for(const i of [4,14,23,33])tree(...gardenPath[i]!,1.15);
-  for(const [x,z] of [[-201,86],[-198,83],[-177,101],[-174,98]] as const)tree(x,z,1.2);
-  mesh.band(meadow.slice(1,10),0,.5,p.seawall,.45);
-  for(let i=2;i<10;i++)mesh.wall(meadow[i-1]!,meadow[i]!,.055,.45,p.seawall);
 
   const roads=roadSurfaces(CITY_PLAN);
   const approaches=junctionApproaches(CITY_PLAN);

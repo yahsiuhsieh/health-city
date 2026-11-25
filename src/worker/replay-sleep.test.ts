@@ -37,8 +37,8 @@ it("reads all pages, preserves the session across midnight, and merges overlappi
   ]);
   expect(overnight?.shortAwakenings).toEqual([{start:7080,end:7260},{start:7140,end:7620}]);
   expect(asleepSeconds(overnight!)).toBe(471 * 60);
-  expect(destination(overnight!).area).toBe(11304);
-  expect(destination(nap!).area).toBe(720);
+  expect(destination(overnight!).area).toBe(4710);
+  expect(destination(nap!).area).toBe(300);
 
   const first = dayWindow(sleepStartDate, sleepZone)!;
   const previous = daySleepVoyages(replaySleep([overnightSleep,napSleep],first), sleepStartDate, sleepZone);

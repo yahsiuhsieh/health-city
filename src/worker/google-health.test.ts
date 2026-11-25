@@ -147,13 +147,13 @@ describe("Complete read-only health inspection", () => {
     expect(data.tables[0]!.rows.map((row) => row[2])).toEqual([0, null]);
   });
 
-  it("preserves API heart rate means and missing values without filling omitted windows", () => {
+  it("rounds heart rate means and preserves missing values without filling omitted windows", () => {
     const points = [
       { startTime: "2024-02-29T00:05:00Z", endTime: "2024-02-29T00:10:00Z" },
       { startTime: "2024-02-29T00:00:00Z", endTime: "2024-02-29T00:05:00Z", heartRate: { beatsPerMinuteAvg: 70.123456 } },
     ];
     const data = inspectRecords("heart-rate", points, window);
-    expect(data.tables[0]!.rows.map(row => row[2])).toEqual([70.123456, null]);
+    expect(data.tables[0]!.rows.map(row => row[2])).toEqual([70.12, null]);
     expect(() => inspectRecords("heart-rate", [points[0], points[0]], window)).toThrow();
     expect(() => inspectRecords("heart-rate", [{ ...points[0], endTime: "2024-02-29T00:09:00Z" }], window)).toThrow();
   });

@@ -5,6 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import type { Replay } from "../../core/replay.ts";
 import { revealDistanceAt, islandRevealAt } from "../sleep/timeline.ts";
 import { islandSeabed,outerReefSeabed } from "../sleep/reef.ts";
+import { mistTexture } from "../sleep/mist-bank.ts";
 import { destination } from "../sleep/island-preview.ts";
 import { ROUTE_LENGTH } from "../sleep/route.ts";
 import { asleepSeconds, type DaySleepVoyage } from "../sleep/session.ts";
@@ -25,7 +26,7 @@ function makeOcean(island: ReturnType<typeof destination> | null, coastline?: Se
     if(islandBed?.contains(x,z))depth=Math.min(depth,islandBed.sampleAt(x,z,1)<0?0:islandBed.depthAt(x,z));
     return depth;
   }
-  return { bed, islandBed, outerBed, floorAt, waterPass:{value:0}, uniforms: {
+  return { mist:island?mistTexture(island):null, bed, islandBed, outerBed, floorAt, waterPass:{value:0}, uniforms: {
     outerMap:{value:outerBed?.texture??bed.texture},outerBounds:{value:outerBed?.bounds??new Vector4()},
     islandMap:{value:islandBed?.texture??bed.texture}, islandBounds:{value:islandBed?.bounds??new Vector4(0,0,0,0)},
     uRevealS:{value:-1}, uIslandReveal:{value:0},
@@ -44,6 +45,7 @@ export function OceanProvider({ replay, night, sleep, children, coastline }: {
   const land = sleep && asleepSeconds(sleep.session)>0 ? destination(sleep.session) : null;
   const ocean = useMemo(() => makeOcean(land,coastline), [land,coastline]);
   useEffect(() => () => {
+    ocean.mist?.mask.dispose();
     ocean.bed.texture.dispose();
     ocean.islandBed?.texture.dispose();
     ocean.outerBed?.texture.dispose();

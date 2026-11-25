@@ -4,8 +4,10 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { BoxGeometry,BufferGeometry,Color,CylinderGeometry,DoubleSide,Float32BufferAttribute,Group,InstancedMesh,Matrix4,Mesh,MeshDepthMaterial,MeshStandardMaterial,Object3D,RGBADepthPacking,Vector3,Frustum } from "three";
 import { useOcean,type OceanEnvironment } from "../ocean/OceanEnvironment.tsx";
+import { waveFrontGLSL } from "../ocean/shore-shader.ts";
 import { patchSand } from "../ocean/sand-material.ts";
 import { DRY_LAYER,SEABED_LAYER,WATER_LEVEL } from "../ocean/layers.ts";
+import { driftingMistGLSL } from "./mist-bank.ts";
 import { islandMesh } from "./island-mesh.ts";
 import { islandLayout,type Placement } from "./island-layout.ts";
 import type { IslandTerrain } from "./island-shape.ts";
@@ -14,17 +16,28 @@ import { ROUTE_LENGTH } from "./route.ts";
 import { elapsedSeconds,type DaySleepVoyage } from "./session.ts";
 import type { Replay } from "../../core/replay.ts";
 
-function materials(ocean:OceanEnvironment,sand=false){
+function materials(ocean:OceanEnvironment,surface:"land"|"sand"|"reef"="land"){
   const mat=new MeshStandardMaterial({vertexColors:true,roughness:.94,side:DoubleSide});
   const depth=new MeshDepthMaterial({depthPacking:RGBADepthPacking,side:DoubleSide});
-  for(const material of [mat,depth]){
-    material.customProgramCacheKey=()=>sand?"cay-sand":"cay-props";
-    material.onBeforeCompile=shader=>{
-      if(sand && material===mat)patchSand(shader,ocean,"sand",ocean.islandBed!);
-      else shader.fragmentShader="uniform float uIslandReveal;\n"+shader.fragmentShader;
-      shader.uniforms.uIslandReveal=ocean.uniforms.uIslandReveal;
-      shader.fragmentShader=shader.fragmentShader.replace("#include <clipping_planes_fragment>",
-        "#include <clipping_planes_fragment>\n if(uIslandReveal<=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715)))))discard;");
+  if(surface!=="reef"){
+    mat.customProgramCacheKey=()=>"cay-mist-"+surface;
+    mat.onBeforeCompile=shader=>{
+      Object.assign(shader.uniforms,ocean.uniforms,ocean.mist!.uniforms);
+      if(surface==="sand")patchSand(shader,ocean,"sand",ocean.islandBed!);
+      else shader.fragmentShader="uniform float oceanTime,nightAmount,uIslandReveal;\n"+waveFrontGLSL+shader.fragmentShader;
+      shader.vertexShader="varying vec3 mistPosition;\n"+shader.vertexShader.replace("#include <project_vertex>",`
+        #include <project_vertex>
+        vec4 localMistPoint=vec4(transformed,1.);
+        #ifdef USE_INSTANCING
+          localMistPoint=instanceMatrix*localMistPoint;
+        #endif
+        mistPosition=(modelMatrix*localMistPoint).xyz;`);
+      shader.fragmentShader="varying vec3 mistPosition;\n"+shader.fragmentShader
+        .replace("void main() {",driftingMistGLSL+"\nvoid main() {")
+        .replace("#include <opaque_fragment>",`
+        float haze=driftingMist(mistPosition.xz)*(1.-.23*smoothstep(2.,12.,mistPosition.y));
+        outgoingLight=mix(outgoingLight,mix(vec3(.53,.67,.69),vec3(.08,.15,.20),nightAmount),haze);
+        #include <opaque_fragment>`);
     };
   }
   return {mat,depth};
@@ -56,7 +69,7 @@ function colonyCrown(src:BufferGeometry,name:string){
   g.setAttribute("color",new Float32BufferAttribute(rgb,3));g.setIndex(indices);g.computeVertexNormals();return g;
 }
 function islandModel(land:IslandTerrain,assets:Group,ocean:OceanEnvironment){
-  const root=new Group(),dummy=new Object3D(),props=materials(ocean),sand=materials(ocean,true);
+  const root=new Group(),dummy=new Object3D(),props=materials(ocean),sand=materials(ocean,"sand"),reef=materials(ocean,"reef");
   const owned:BufferGeometry[]=[],batches:InstancedMesh[]=[];
   const ground=islandMesh(land);owned.push(ground);
   function mount(mesh:Mesh,wet:boolean,depth:MeshDepthMaterial){
@@ -73,9 +86,9 @@ function islandModel(land:IslandTerrain,assets:Group,ocean:OceanEnvironment){
   for(const [name,items] of groups){
     const geom=(assets.getObjectByName(name) as Mesh).geometry;
     const wet=items[0]!.wet,colony=wet && name!=="bommie-a";
-    const detail=new InstancedMesh(geom,props.mat,items.length);detail.name=name;
+    const detail=new InstancedMesh(geom,wet?reef.mat:props.mat,items.length);detail.name=name;
     const lowGeometry=colony?colonyCrown(geom,name):null;
-    const low=lowGeometry?new InstancedMesh(lowGeometry,props.mat,items.length):null;
+    const low=lowGeometry?new InstancedMesh(lowGeometry,reef.mat,items.length):null;
     if(lowGeometry)owned.push(lowGeometry);
     geom.computeBoundingBox();
     const extent=geom.boundingBox!.getSize(new Vector3());
@@ -91,9 +104,9 @@ function islandModel(land:IslandTerrain,assets:Group,ocean:OceanEnvironment){
       dummy.updateMatrix();detail.setMatrixAt(i,dummy.matrix);
       if(cull){matrices.push(dummy.matrix.clone());centers.push(dummy.position.clone());}
     }
-    mount(detail,wet,props.depth);batches.push(detail);
+    mount(detail,wet,wet?reef.depth:props.depth);batches.push(detail);
     if(low){
-      low.name=name+" overview";mount(low,true,props.depth);batches.push(low);distant.push(low);
+      low.name=name+" overview";mount(low,true,reef.depth);batches.push(low);distant.push(low);
     }
     if(cull){detail.frustumCulled=false;detailBatches.push({mesh:detail,matrices,centers,colony,radius:colony?3:18});}
   }
@@ -157,7 +170,7 @@ function islandModel(land:IslandTerrain,assets:Group,ocean:OceanEnvironment){
   }
   return {root,lamp:lamp.mat,setFenders,distant,detailBatches,dispose(){
     batches.forEach(m=>m.dispose());owned.forEach(g=>g.dispose());
-    for(const {mat,depth} of [props,sand,lamp]){mat.dispose();depth.dispose();}
+    for(const {mat,depth} of [props,sand,reef,lamp]){mat.dispose();depth.dispose();}
   }};
 }
 export function DestinationIsland({onIsland,sleep,replay,land}:{onIsland:()=>void;sleep:DaySleepVoyage;replay:Replay;land:IslandTerrain}){
@@ -165,8 +178,6 @@ export function DestinationIsland({onIsland,sleep,replay,land}:{onIsland:()=>voi
   const model=useMemo(()=>islandModel(land,assets.scene,ocean),[assets,ocean,land]);
   const view=useMemo(()=>({matrix:new Matrix4(),previous:new Matrix4(),frustum:new Frustum()}),[model]);
   useFrame(({camera,size})=>{
-    model.root.visible=ocean.uniforms.uIslandReveal.value>0;
-    if(!model.root.visible)return;
     const {session,offset}=sleep;
     const t=offset+replay.read().seconds,{wait,sail}=returnDurations(session.returnSeconds),since=t-elapsedSeconds(session);
     let slide=Math.max(0,routeDistanceAt(session,t)-(ROUTE_LENGTH-1));
@@ -189,6 +200,6 @@ export function DestinationIsland({onIsland,sleep,replay,land}:{onIsland:()=>voi
   });
   useEffect(()=>()=>model.dispose(),[model]);
   return <primitive object={model.root} name="Destination island" onClick={(e:ThreeEvent<MouseEvent>)=>{
-    if(e.delta<5 && ocean.uniforms.uIslandReveal.value>=.99999){e.stopPropagation();onIsland();}
+    if(e.delta<5){e.stopPropagation();onIsland();}
   }}/>;
 }

@@ -6,8 +6,8 @@ import { writeFile } from "node:fs/promises";
 const root = new T.Group();
 const paint = new T.MeshStandardMaterial({ vertexColors:true, roughness:.77 });
 const timber = "#996f48", ivory = "#e8dcbe", rubber = "#313b3d", glass = "#344f5a";
-const dimensions={Schooner:[11.2,3.4,1],Trawler:[20,6.5,1.48],Tug:[24,9,1.76],
-  Freighter:[58,10.5,1.56],WaterTaxi:[12,4,1],Motorboat:[7,2.4,1]};
+const dimensions={Schooner:[11.2,3.4,1],Trawler:[20,6.5,1.48],FishingBoat:[9,3,1],
+  CrabBoat:[9.8,3.6,1],WaterTaxi:[12,4,1],Motorboat:[7,2.4,1]};
 let parts = [];
 let captainJoint;
 function part(geometry, color, position, rotation) {
@@ -129,46 +129,18 @@ for(const side of [-1,1]){
   part(new T.TorusGeometry(.24,.075,6,12),"#ba6648",[2.94,2.08,side*1.51]);
 }
 finish("Trawler");
-hull(10,4.3,1.45,"#a54936");
-cabin(.5,1.25,3.3,2.2,2.85,"#daa54c");
-for(const x of [-3.1,3.05]) for(const z of [-1,1]){
-  beam([x,1.24,z],[x,1.67,z],.11,rubber);
-  box(x,1.65,z,.46,.11,.14,rubber);
+for(const crab of [false,true]){
+  hull(crab?9.8:9,crab?3.6:3,1.18,crab?"#945b46":"#47716c");
+  cabin(1.3,1.0,2.1,1.38,2.2,ivory);
+  box(1.3,2.44,0,2.45,.12,2.42,rubber);
+  beam([.5,2.45,0],[.5,3.5,0],.045,ivory);
+  for(const side of [-1,1]){
+    beam([-3.8,1.2,side],[-3.8,2.3,side],.05,timber);
+    beam([-3.8,2.3,side],[-1,2.3,side],.05,timber);
+    if(crab)for(const x of [-3,-2,-1])box(x,1.48,side*.62,.75,.55,.72,"#927a51");
+  }
+  finish(crab?"CrabBoat":"FishingBoat");
 }
-beam([.58,3.52,0],[.58,4.54,0],.063,ivory);
-beam([.58,4.24,-.52],[.58,4.24,.52],.048,ivory);
-beam([-2.1,1.35,0],[-2.1,3.85,0],.42,"#ab503c",.33);
-beam([-2.1,3.56,0],[-2.1,3.94,0],.37,rubber);
-for(const side of [-1,1]) for(let i=-3;i<=3;i++)
-  part(new T.TorusGeometry(.4,.14,8,14),rubber,[i*1.02,1.03,side*(2.09-.08*Math.abs(i))]);
-beam([-3.1,1.37,0],[-3.1,1.76,0],.19,rubber);
-beam([-3.1,1.76,0],[-3.53,1.81,0],.11,rubber);
-beam([-3.53,1.81,0],[-3.61,1.97,0],.075,rubber);
-finish("Tug");
-hull(32,6.3,2.55,"#335673","#798282");
-cabin(-10.8,2.3,4.2,3.2,4.5,ivory);
-cabin(-10.8,5.57,4.5,1.15,4.8,ivory);
-for(const side of [-1,1]){
-  for(let i=0;i<5;i++) beam([9+i*.99,2.4,side*(2.65-i*.33)],[9+i*.99,2.94,side*(2.65-i*.33)],.044,ivory);
-  beam([9,2.94,side*2.65],[12.96,2.94,side*1.33],.043,ivory);
-}
-beam([-10.8,6.75,0],[-10.8,8.35,0],.08,ivory);
-beam([-10.8,7.85,-.78],[-10.8,7.85,.78],.06,ivory);
-beam([-12.8,3.7,0],[-12.8,6.25,0],.62,rubber);
-for(const x of [-2.5,7.7]){
-  cargo(x,2.31,0,x<0?"#737d78":"#878c80",7.2,.69,4.7);
-  const pedestal=x-4.2;
-  beam([pedestal,2.3,-1.8],[pedestal,6.4,-1.8],.26,"#b89b68");
-  beam([pedestal,5.72,-1.8],[pedestal+2.9,7.25,-1.1],.19,"#d0b27f",.1);
-  beam([pedestal+2.9,7.25,-1.1],[pedestal+2.9,6.16,-1.1],.035,rubber);
-}
-for(const side of [-1,1]){
-  for(let i=0;i<4;i++)box(-10.8+(i-1.5)*.96,3.25,side*2.27,.64,.48,.055,glass);
-  part(new T.TorusGeometry(.27,.081,6,14),"#bb674a",[-9.2,5.18,side*2.29]);
-}
-cabin(-10.7,6.86,3.1,.9,3.65,ivory);
-finish("Freighter");
-
 hull(7,2.4,.78,"#e1d6bb");
 cabin(.2,.66,.98,.69,.79,ivory);
 box(-2.9,.84,0,.68,.76,.56,rubber);
